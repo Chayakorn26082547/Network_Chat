@@ -1,0 +1,23 @@
+# Next.js
+.next/
+out/
+.vercel/
+
+# Env
+.env
+.env.local
+.env.*
+!.env.example
+
+# Node
+node_modules/
+
+# Build
+dist/
+build/
+
+# System
+.DS_Store
+
+# Logs
+*.log

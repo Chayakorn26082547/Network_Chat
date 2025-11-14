@@ -1,0 +1,64 @@
+# ============================================
+# Global Ignore (Root)
+# ============================================
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Env (leave examples)
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+
+# Build outputs (if any appear)
+dist/
+build/
+
+# ============================================
+# Backend
+# ============================================
+
+backend/node_modules/
+backend/dist/
+backend/build/
+backend/tmp/
+backend/temp/
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# ============================================
+# Frontend (Next.js)
+# ============================================
+
+frontend/node_modules/
+frontend/.next/
+frontend/.vercel/
+frontend/out/
+
+# Next.js cache
+frontend/.next/cache/
+
+# Frontend env files
+frontend/.env
+frontend/.env.local
+frontend/.env.*
+!frontend/.env.example
+
+# Build artifacts
+frontend/dist/
+frontend/build/
+
+# Public uploaded files (if any)
+frontend/public/uploads/

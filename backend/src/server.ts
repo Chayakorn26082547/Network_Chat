@@ -4,6 +4,7 @@ import { Server, Socket } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
 import { randomUUID } from "crypto";
+import twilio from "twilio";
 import {
   User,
   Message,
@@ -46,13 +47,30 @@ function getChatRoomKey(userId1: string, userId2: string): string {
 }
 
 // Health check endpoint
-// THIS USE REST API [NEED TO DELETE]
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     users: users.size,
     messages: messages.length,
   });
+});
+
+const accountSid = process.env.TWILIO_ACCOUNT_SID!;
+const authToken = process.env.TWILIO_AUTH_TOKEN!;
+const twilioClient = twilio(accountSid, authToken);
+// GET /turn-token → returns fresh ICE servers
+app.get("/turn-token", async (req, res) => {
+  try {
+    const token = await twilioClient.tokens.create();
+    res.json({
+      iceServers: token.iceServers,
+      username: token.username,
+      ttl: token.ttl,
+    });
+  } catch (e) {
+    console.error("TURN token error:", e);
+    res.status(500).json({ error: "Failed to generate TURN token" });
+  }
 });
 
 // Debug endpoint to check private messages

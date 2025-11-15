@@ -140,8 +140,10 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
     >
       <div className="bg-white w-full max-w-2xl h-[80vh] rounded-xl shadow-2xl flex flex-col overflow-hidden relative">
         {/* Header */}
-        <div className="bg-[#252524]  p-5 border-b border-blue-200">
-          <h2 className="text-xl font-bold text-[#f8f8f8]">World Chat</h2>
+        <div className="h-[8vh] bg-[#252524]  p-5 border-b border-blue-200">
+          <h2 className="ml-3 mt-3 text-xl font-bold text-[#f8f8f8]">
+            World Chat
+          </h2>
         </div>
 
         {/* Messages Container */}

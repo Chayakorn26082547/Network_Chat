@@ -187,6 +187,10 @@ io.on(
 
         // Broadcast to all connected clients
         io.emit("message", message);
+        // Handle get previous messages
+        socket.on("getPreviousMessages", () => {
+          socket.emit("previousMessages", messages);
+        });
       }
     );
 

@@ -155,8 +155,21 @@ export default function VideoCallModal() {
   const createPeerConnection = (toUserId: string) => {
     const pc = new RTCPeerConnection({
       iceServers: [
+        // STUN
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
+
+        // FREE TURN server (metered.ca open relay)
+        {
+          urls: "turn:global.relay.metered.ca:80",
+          username: "open",
+          credential: "open",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:443",
+          username: "open",
+          credential: "open",
+        },
       ],
     });
 

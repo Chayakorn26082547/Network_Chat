@@ -16,7 +16,6 @@ export default function VideoCallModal() {
   const [remoteUsername, setRemoteUsername] = useState<string | null>(null);
   const [remoteUserId, setRemoteUserId] = useState<string | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
-  const [pendingOffer, setPendingOffer] = useState<any>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -63,11 +62,11 @@ export default function VideoCallModal() {
       fromUserId: string;
       offer: any;
     }) => {
-      // Store the offer but don't auto-answer - wait for user to click Accept
+      // If offer arrives and we're not already in call, prepare to accept
       if (!remoteUserId) {
         setRemoteUserId(data.fromUserId);
       }
-      setPendingOffer(data.offer);
+      await startAsAnswerer(data.fromUserId, data.offer);
     };
 
     const handleVideoAnswer = async (data: {
@@ -195,13 +194,10 @@ export default function VideoCallModal() {
   };
 
   const acceptIncoming = async () => {
-    if (!incomingCall || !pendingOffer) return;
+    if (!incomingCall) return;
     setIsOpen(true);
     setIsCaller(false);
-    // Now that user accepted, process the offer
-    await startAsAnswerer(incomingCall.fromUserId, pendingOffer);
-    setIncomingCall(null);
-    setPendingOffer(null);
+    // Wait for the actual offer event, which will call startAsAnswerer
   };
 
   const declineIncoming = () => {
@@ -209,7 +205,6 @@ export default function VideoCallModal() {
       socket.emit("videoCallDeclined", incomingCall.fromUserId);
     }
     setIncomingCall(null);
-    setPendingOffer(null);
     setIsOpen(false);
   };
 
@@ -228,7 +223,6 @@ export default function VideoCallModal() {
     setIsInCall(false);
     setIsOpen(false);
     setIncomingCall(null);
-    setPendingOffer(null);
     setIsCaller(false);
     setRemoteUserId(null);
     setRemoteUsername(null);

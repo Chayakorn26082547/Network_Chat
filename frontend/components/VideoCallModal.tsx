@@ -8,39 +8,56 @@ interface IncomingCall {
   fromUsername: string;
 }
 
+interface PendingOffer {
+  fromUserId: string;
+  offer: RTCSessionDescriptionInit;
+}
+
 export default function VideoCallModal() {
   const { socket } = useSocket();
+
   const [isOpen, setIsOpen] = useState(false);
   const [isInCall, setIsInCall] = useState(false);
   const [isCaller, setIsCaller] = useState(false);
+
   const [remoteUsername, setRemoteUsername] = useState<string | null>(null);
   const [remoteUserId, setRemoteUserId] = useState<string | null>(null);
+
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
-  const [pendingOffer, setPendingOffer] = useState<{
-    fromUserId: string;
-    offer: any;
-  } | null>(null);
+  const [pendingOffer, setPendingOffer] = useState<PendingOffer | null>(null);
+
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const remoteStreamRef = useRef<HTMLVideoElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteStreamStateRef = useRef<MediaStream | null>(null);
 
-  // Expose a simple global starter so other components can trigger a call
+  // ---------------------------------------------------------------------------
+  // Global starter: window.startVideoCall(toUserId, toUsername?)
+  // ---------------------------------------------------------------------------
   useEffect(() => {
+    if (!socket) return;
+
     (window as any).startVideoCall = (
       toUserId: string,
       toUsername?: string
     ) => {
+      console.log("[VideoCall] startVideoCall called", {
+        toUserId,
+        toUsername,
+      });
+
       setIsOpen(true);
       setIsCaller(true);
       setRemoteUserId(toUserId);
       setRemoteUsername(toUsername || null);
-      // Send an initial request (ring) and then create offer in a moment
-      socket?.emit("videoCallRequest", toUserId);
-      // Start the call flow after a short delay to allow callee to be notified
+
+      // Notify callee to show incoming call UI
+      socket.emit("videoCallRequest", toUserId);
+
+      // Start call after a short delay so callee has time to set up
       setTimeout(() => {
         startAsCaller(toUserId);
       }, 400);
@@ -49,23 +66,31 @@ export default function VideoCallModal() {
     return () => {
       try {
         delete (window as any).startVideoCall;
-      } catch (e) {}
+      } catch (e) {
+        // ignore
+      }
     };
   }, [socket]);
 
-  // Update remote video element when remote stream changes
+  // ---------------------------------------------------------------------------
+  // Attach remote stream when it changes
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (remoteStreamRef.current && remoteStream) {
-      console.log("Attaching remote stream to video element via useEffect");
-      remoteStreamRef.current.srcObject = remoteStream;
-      // Don't force play here - autoPlay attribute will handle it
+    if (remoteVideoRef.current && remoteStream) {
+      console.log("[VideoCall] Attaching remote stream via useEffect");
+      remoteVideoRef.current.srcObject = remoteStream;
     }
   }, [remoteStream]);
 
+  // ---------------------------------------------------------------------------
+  // Socket event handlers
+  // ---------------------------------------------------------------------------
   useEffect(() => {
     if (!socket) return;
 
+    // 1) Callee receives an incoming call notification
     const handleIncoming = (data: IncomingCall) => {
+      console.log("[VideoCall] incomingVideoCall", data);
       setIncomingCall(data);
       setIsOpen(true);
       setIsCaller(false);
@@ -73,48 +98,59 @@ export default function VideoCallModal() {
       setRemoteUsername(data.fromUsername);
     };
 
-    const handleVideoOffer = async (data: {
-      fromUserId: string;
-      offer: any;
-    }) => {
-      // Store the offer but don't automatically answer - wait for user to click Accept
-      console.log("Received video offer from:", data.fromUserId);
-      setPendingOffer(data);
+    // 2) Offer: callee receives SDP offer from caller
+    const handleVideoOffer = (data: { fromUserId: string; offer: any }) => {
+      console.log("[VideoCall] videoOffer received", data);
+      // Store full object so we have both fromUserId + offer for acceptIncoming
+      setPendingOffer({
+        fromUserId: data.fromUserId,
+        offer: data.offer,
+      });
       if (!remoteUserId) {
         setRemoteUserId(data.fromUserId);
       }
     };
 
+    // 3) Answer: caller receives SDP answer from callee
     const handleVideoAnswer = async (data: {
       fromUserId: string;
       answer: any;
     }) => {
+      console.log("[VideoCall] videoAnswer received", data);
       const pc = pcRef.current;
-      if (pc) {
+      if (!pc) return;
+      try {
         await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+      } catch (err) {
+        console.error(
+          "[VideoCall] Error setting remote description (answer)",
+          err
+        );
       }
     };
 
+    // 4) ICE candidates
     const handleNewIce = async (data: {
       fromUserId: string;
       candidate: any;
     }) => {
       const pc = pcRef.current;
-      if (pc && data.candidate) {
-        try {
-          await pc.addIceCandidate(data.candidate);
-        } catch (e) {
-          console.warn("Error adding remote ICE candidate", e);
-        }
+      if (!pc || !data.candidate) return;
+      try {
+        await pc.addIceCandidate(data.candidate);
+      } catch (err) {
+        console.warn("[VideoCall] Error adding ICE candidate", err);
       }
     };
 
+    // 5) Call ended / declined by remote
     const handleCallEnded = (data: { fromUserId: string }) => {
+      console.log("[VideoCall] videoCallEnded from remote", data);
       endCall();
     };
 
     const handleCallDeclined = (data: { fromUserId: string }) => {
-      // Show a small notification then close
+      console.log("[VideoCall] videoCallDeclined from remote", data);
       endCall();
     };
 
@@ -135,6 +171,9 @@ export default function VideoCallModal() {
     };
   }, [socket, remoteUserId]);
 
+  // ---------------------------------------------------------------------------
+  // Media + PeerConnection helpers
+  // ---------------------------------------------------------------------------
   const startLocalStream = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -142,24 +181,28 @@ export default function VideoCallModal() {
         audio: true,
       });
       localStreamRef.current = stream;
+
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
       }
+
       return stream;
     } catch (e) {
-      console.error("Failed to get local media", e);
+      console.error("[VideoCall] Failed to get local media", e);
       throw e;
     }
   };
 
   const createPeerConnection = (toUserId: string) => {
+    console.log("[VideoCall] Creating RTCPeerConnection to", toUserId);
+
     const pc = new RTCPeerConnection({
       iceServers: [
         // STUN
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
 
-        // FREE TURN server (metered.ca open relay)
+        // TURN (free open relay - good for testing / small scale)
         {
           urls: "turn:global.relay.metered.ca:80",
           username: "open",
@@ -175,66 +218,74 @@ export default function VideoCallModal() {
 
     pc.onicecandidate = (ev) => {
       if (ev.candidate) {
-        console.log("Sending ICE candidate:", ev.candidate.type);
-        socket?.emit("newIceCandidate", { toUserId, candidate: ev.candidate });
+        console.log("[VideoCall] Sending ICE candidate:", ev.candidate.type);
+        socket?.emit("newIceCandidate", {
+          toUserId,
+          candidate: ev.candidate,
+        });
       } else {
-        console.log("All ICE candidates sent");
+        console.log("[VideoCall] All ICE candidates sent");
       }
     };
 
     pc.ontrack = (ev) => {
       console.log(
-        "Received remote track:",
+        "[VideoCall] Received remote track:",
         ev.track.kind,
         "streams:",
         ev.streams.length
       );
-      if (ev.streams && ev.streams[0]) {
-        const stream = ev.streams[0];
-        console.log(
-          "Setting remote stream with",
-          stream.getTracks().length,
-          "tracks"
-        );
 
-        // Store in ref for immediate use
-        remoteStreamStateRef.current = stream;
+      if (!ev.streams || !ev.streams[0]) return;
+      const stream = ev.streams[0];
 
-        // Directly set to video element if it exists
-        if (remoteStreamRef.current) {
-          console.log("Directly setting srcObject on video element");
-          remoteStreamRef.current.srcObject = stream;
-          // autoPlay attribute will handle playback
-        }
+      console.log(
+        "[VideoCall] Setting remote stream with",
+        stream.getTracks().length,
+        "tracks"
+      );
 
-        // Also update state to trigger re-render
-        setRemoteStream(stream);
+      // Keep in ref (for immediate attach when video mounts)
+      remoteStreamStateRef.current = stream;
+
+      // Directly attach if video element ready
+      if (remoteVideoRef.current) {
+        console.log("[VideoCall] Directly setting srcObject on remote video");
+        remoteVideoRef.current.srcObject = stream;
       }
+
+      // Also store in state for React to know
+      setRemoteStream(stream);
     };
 
     pc.onconnectionstatechange = () => {
-      console.log("Connection state:", pc.connectionState);
+      console.log("[VideoCall] Connection state:", pc.connectionState);
       if (
         pc.connectionState === "failed" ||
-        pc.connectionState === "disconnected"
+        pc.connectionState === "disconnected" ||
+        pc.connectionState === "closed"
       ) {
-        console.error("Connection failed or disconnected");
+        console.warn("[VideoCall] Connection failed/disconnected/closed");
       }
     };
 
     pc.oniceconnectionstatechange = () => {
-      console.log("ICE connection state:", pc.iceConnectionState);
+      console.log("[VideoCall] ICE connection state:", pc.iceConnectionState);
     };
 
     pcRef.current = pc;
     return pc;
   };
 
+  // ---------------------------------------------------------------------------
+  // Caller flow
+  // ---------------------------------------------------------------------------
   const startAsCaller = async (toUserId: string) => {
     try {
+      console.log("[VideoCall] Starting as caller");
       const stream = await startLocalStream();
       const pc = createPeerConnection(toUserId);
-      // add tracks
+
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
 
       const offer = await pc.createOffer();
@@ -243,44 +294,66 @@ export default function VideoCallModal() {
       socket?.emit("videoOffer", { toUserId, offer });
       setIsInCall(true);
     } catch (e) {
-      console.error("Error starting as caller", e);
+      console.error("[VideoCall] Error starting as caller", e);
       endCall();
     }
   };
 
-  const startAsAnswerer = async (fromUserId: string, remoteOffer: any) => {
+  // ---------------------------------------------------------------------------
+  // Answerer flow
+  // ---------------------------------------------------------------------------
+  const startAsAnswerer = async (
+    fromUserId: string,
+    remoteOffer: RTCSessionDescriptionInit
+  ) => {
     try {
+      console.log("[VideoCall] Starting as answerer");
       const stream = await startLocalStream();
       const pc = createPeerConnection(fromUserId);
+
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
 
       await pc.setRemoteDescription(new RTCSessionDescription(remoteOffer));
+
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      socket?.emit("videoAnswer", { toUserId: fromUserId, answer });
+      socket?.emit("videoAnswer", {
+        toUserId: fromUserId,
+        answer,
+      });
+
       setIsInCall(true);
     } catch (e) {
-      console.error("Error starting as answerer", e);
+      console.error("[VideoCall] Error starting as answerer", e);
       endCall();
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // Incoming call controls
+  // ---------------------------------------------------------------------------
   const acceptIncoming = async () => {
-    if (!incomingCall) return;
-    console.log("Accepting incoming call");
-    setIncomingCall(null); // Clear the incoming call prompt
-
-    // If we have a pending offer, process it now
-    if (pendingOffer) {
-      console.log("Processing pending offer");
-      await startAsAnswerer(pendingOffer.fromUserId, pendingOffer.offer);
-      setPendingOffer(null);
+    if (!incomingCall || !pendingOffer) {
+      console.warn("[VideoCall] No incoming call or pending offer to accept");
+      return;
     }
+
+    console.log("[VideoCall] Accepting incoming call");
+    const { fromUserId, offer } = pendingOffer;
+
+    // Clear UI state first
+    setIncomingCall(null);
+    setPendingOffer(null);
+    setIsOpen(true);
+    setIsCaller(false);
+
+    await startAsAnswerer(fromUserId, offer);
   };
 
   const declineIncoming = () => {
     if (incomingCall && socket && incomingCall.fromUserId) {
+      console.log("[VideoCall] Declining incoming call");
       socket.emit("videoCallDeclined", incomingCall.fromUserId);
     }
     setIncomingCall(null);
@@ -288,19 +361,29 @@ export default function VideoCallModal() {
     setIsOpen(false);
   };
 
+  // ---------------------------------------------------------------------------
+  // Hang up / cleanup
+  // ---------------------------------------------------------------------------
   const endCall = () => {
-    console.log("Ending call");
-    // cleanup pc and streams
+    console.log("[VideoCall] Ending call locally");
     if (pcRef.current) {
       try {
+        pcRef.current.ontrack = null;
+        pcRef.current.onicecandidate = null;
+        pcRef.current.onconnectionstatechange = null;
+        pcRef.current.oniceconnectionstatechange = null;
         pcRef.current.close();
-      } catch (e) {}
+      } catch (e) {
+        // ignore
+      }
       pcRef.current = null;
     }
+
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     }
+
     setIsInCall(false);
     setIsOpen(false);
     setIncomingCall(null);
@@ -313,15 +396,22 @@ export default function VideoCallModal() {
   };
 
   const hangup = () => {
-    if (remoteUserId) socket?.emit("videoCallEnded", remoteUserId);
+    console.log("[VideoCall] Hangup clicked");
+    if (remoteUserId && socket) {
+      socket.emit("videoCallEnded", remoteUserId);
+    }
     endCall();
   };
 
+  // ---------------------------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------------------------
   return (
     <>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white w-full max-w-3xl h-[80vh] rounded-lg shadow-lg p-4 flex flex-col">
+            {/* Header */}
             <div className="flex items-center justify-between">
               <h3 className="font-bold">
                 Video Call {remoteUsername ? `with ${remoteUsername}` : ""}
@@ -336,9 +426,7 @@ export default function VideoCallModal() {
                   </button>
                 )}
                 <button
-                  onClick={() => {
-                    endCall();
-                  }}
+                  onClick={endCall}
                   className="px-3 py-1 bg-gray-200 rounded"
                 >
                   Close
@@ -346,6 +434,7 @@ export default function VideoCallModal() {
               </div>
             </div>
 
+            {/* Videos */}
             <div className="flex-1 mt-4 grid grid-cols-2 gap-4">
               <div className="bg-black rounded overflow-hidden flex items-center justify-center">
                 <video
@@ -359,14 +448,12 @@ export default function VideoCallModal() {
               <div className="bg-black rounded overflow-hidden flex items-center justify-center">
                 <video
                   ref={(el) => {
-                    remoteStreamRef.current = el;
-                    // If we already have a stream waiting, attach it immediately
+                    remoteVideoRef.current = el;
                     if (el && remoteStreamStateRef.current) {
                       console.log(
-                        "Video element mounted, attaching waiting stream"
+                        "[VideoCall] Remote video mounted, attaching waiting stream"
                       );
                       el.srcObject = remoteStreamStateRef.current;
-                      // autoPlay will handle playback
                     }
                   }}
                   autoPlay
@@ -376,6 +463,7 @@ export default function VideoCallModal() {
               </div>
             </div>
 
+            {/* Incoming call prompt */}
             {!isInCall && incomingCall && (
               <div className="mt-3 flex items-center gap-3">
                 <div className="flex-1">

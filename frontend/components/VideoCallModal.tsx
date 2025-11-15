@@ -16,6 +16,11 @@ export default function VideoCallModal() {
   const [remoteUsername, setRemoteUsername] = useState<string | null>(null);
   const [remoteUserId, setRemoteUserId] = useState<string | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const [pendingOffer, setPendingOffer] = useState<{
+    fromUserId: string;
+    offer: any;
+  } | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -47,6 +52,14 @@ export default function VideoCallModal() {
     };
   }, [socket]);
 
+  // Update remote video element when remote stream changes
+  useEffect(() => {
+    if (remoteStreamRef.current && remoteStream) {
+      console.log("Attaching remote stream to video element");
+      remoteStreamRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
+
   useEffect(() => {
     if (!socket) return;
 
@@ -62,11 +75,12 @@ export default function VideoCallModal() {
       fromUserId: string;
       offer: any;
     }) => {
-      // If offer arrives and we're not already in call, prepare to accept
+      // Store the offer but don't automatically answer - wait for user to click Accept
+      console.log("Received video offer from:", data.fromUserId);
+      setPendingOffer(data);
       if (!remoteUserId) {
         setRemoteUserId(data.fromUserId);
       }
-      await startAsAnswerer(data.fromUserId, data.offer);
     };
 
     const handleVideoAnswer = async (data: {
@@ -138,19 +152,50 @@ export default function VideoCallModal() {
 
   const createPeerConnection = (toUserId: string) => {
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+      ],
     });
 
     pc.onicecandidate = (ev) => {
       if (ev.candidate) {
+        console.log("Sending ICE candidate:", ev.candidate.type);
         socket?.emit("newIceCandidate", { toUserId, candidate: ev.candidate });
+      } else {
+        console.log("All ICE candidates sent");
       }
     };
 
     pc.ontrack = (ev) => {
-      if (remoteStreamRef.current) {
-        remoteStreamRef.current.srcObject = ev.streams[0];
+      console.log(
+        "Received remote track:",
+        ev.track.kind,
+        "streams:",
+        ev.streams.length
+      );
+      if (ev.streams && ev.streams[0]) {
+        console.log(
+          "Setting remote stream with",
+          ev.streams[0].getTracks().length,
+          "tracks"
+        );
+        setRemoteStream(ev.streams[0]);
       }
+    };
+
+    pc.onconnectionstatechange = () => {
+      console.log("Connection state:", pc.connectionState);
+      if (
+        pc.connectionState === "failed" ||
+        pc.connectionState === "disconnected"
+      ) {
+        console.error("Connection failed or disconnected");
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log("ICE connection state:", pc.iceConnectionState);
     };
 
     pcRef.current = pc;
@@ -195,9 +240,15 @@ export default function VideoCallModal() {
 
   const acceptIncoming = async () => {
     if (!incomingCall) return;
-    setIsOpen(true);
-    setIsCaller(false);
-    // Wait for the actual offer event, which will call startAsAnswerer
+    console.log("Accepting incoming call");
+    setIncomingCall(null); // Clear the incoming call prompt
+
+    // If we have a pending offer, process it now
+    if (pendingOffer) {
+      console.log("Processing pending offer");
+      await startAsAnswerer(pendingOffer.fromUserId, pendingOffer.offer);
+      setPendingOffer(null);
+    }
   };
 
   const declineIncoming = () => {
@@ -205,10 +256,12 @@ export default function VideoCallModal() {
       socket.emit("videoCallDeclined", incomingCall.fromUserId);
     }
     setIncomingCall(null);
+    setPendingOffer(null);
     setIsOpen(false);
   };
 
   const endCall = () => {
+    console.log("Ending call");
     // cleanup pc and streams
     if (pcRef.current) {
       try {
@@ -223,9 +276,11 @@ export default function VideoCallModal() {
     setIsInCall(false);
     setIsOpen(false);
     setIncomingCall(null);
+    setPendingOffer(null);
     setIsCaller(false);
     setRemoteUserId(null);
     setRemoteUsername(null);
+    setRemoteStream(null);
   };
 
   const hangup = () => {

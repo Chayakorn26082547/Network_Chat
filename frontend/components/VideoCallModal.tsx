@@ -26,6 +26,7 @@ export default function VideoCallModal() {
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<HTMLVideoElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteStreamStateRef = useRef<MediaStream | null>(null);
 
   // Expose a simple global starter so other components can trigger a call
   useEffect(() => {
@@ -55,8 +56,9 @@ export default function VideoCallModal() {
   // Update remote video element when remote stream changes
   useEffect(() => {
     if (remoteStreamRef.current && remoteStream) {
-      console.log("Attaching remote stream to video element");
+      console.log("Attaching remote stream to video element via useEffect");
       remoteStreamRef.current.srcObject = remoteStream;
+      // Don't force play here - autoPlay attribute will handle it
     }
   }, [remoteStream]);
 
@@ -175,12 +177,25 @@ export default function VideoCallModal() {
         ev.streams.length
       );
       if (ev.streams && ev.streams[0]) {
+        const stream = ev.streams[0];
         console.log(
           "Setting remote stream with",
-          ev.streams[0].getTracks().length,
+          stream.getTracks().length,
           "tracks"
         );
-        setRemoteStream(ev.streams[0]);
+
+        // Store in ref for immediate use
+        remoteStreamStateRef.current = stream;
+
+        // Directly set to video element if it exists
+        if (remoteStreamRef.current) {
+          console.log("Directly setting srcObject on video element");
+          remoteStreamRef.current.srcObject = stream;
+          // autoPlay attribute will handle playback
+        }
+
+        // Also update state to trigger re-render
+        setRemoteStream(stream);
       }
     };
 
@@ -281,6 +296,7 @@ export default function VideoCallModal() {
     setRemoteUserId(null);
     setRemoteUsername(null);
     setRemoteStream(null);
+    remoteStreamStateRef.current = null;
   };
 
   const hangup = () => {
@@ -329,7 +345,17 @@ export default function VideoCallModal() {
               </div>
               <div className="bg-black rounded overflow-hidden flex items-center justify-center">
                 <video
-                  ref={remoteStreamRef}
+                  ref={(el) => {
+                    remoteStreamRef.current = el;
+                    // If we already have a stream waiting, attach it immediately
+                    if (el && remoteStreamStateRef.current) {
+                      console.log(
+                        "Video element mounted, attaching waiting stream"
+                      );
+                      el.srcObject = remoteStreamStateRef.current;
+                      // autoPlay will handle playback
+                    }
+                  }}
                   autoPlay
                   playsInline
                   className="w-full h-full object-cover"

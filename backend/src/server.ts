@@ -195,7 +195,6 @@ io.on(
     );
 
     // Handle private message sending
-    // Handle private message sending
     socket.on(
       "privateMessage",
       (data: {

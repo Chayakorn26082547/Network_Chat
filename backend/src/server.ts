@@ -322,6 +322,84 @@ io.on(
       });
     });
 
+    // Video call signaling: caller requests a call (incoming ring)
+    socket.on("videoCallRequest", (toUserId: string) => {
+      const fromUserId = userSockets.get(socket.id);
+      if (!fromUserId) return;
+      const fromUser = users.get(fromUserId);
+      const toUser = users.get(toUserId);
+      if (!fromUser || !toUser) return;
+
+      // Notify callee of incoming call
+      io.to(toUser.socketId).emit("incomingVideoCall", {
+        fromUserId: fromUser.id,
+        fromUsername: fromUser.username,
+      });
+    });
+
+    // Forward SDP offer from caller to callee
+    socket.on("videoOffer", (data: { toUserId: string; offer: any }) => {
+      const fromUserId = userSockets.get(socket.id);
+      if (!fromUserId) return;
+      const toUser = users.get(data.toUserId);
+      const fromUser = users.get(fromUserId);
+      if (!toUser || !fromUser) return;
+
+      io.to(toUser.socketId).emit("videoOffer", {
+        fromUserId: fromUser.id,
+        offer: data.offer,
+      });
+    });
+
+    // Forward SDP answer from callee back to caller
+    socket.on("videoAnswer", (data: { toUserId: string; answer: any }) => {
+      const fromUserId = userSockets.get(socket.id);
+      if (!fromUserId) return;
+      const toUser = users.get(data.toUserId);
+      const fromUser = users.get(fromUserId);
+      if (!toUser || !fromUser) return;
+
+      io.to(toUser.socketId).emit("videoAnswer", {
+        fromUserId: fromUser.id,
+        answer: data.answer,
+      });
+    });
+
+    // Forward ICE candidates
+    socket.on(
+      "newIceCandidate",
+      (data: { toUserId: string; candidate: any }) => {
+        const fromUserId = userSockets.get(socket.id);
+        if (!fromUserId) return;
+        const toUser = users.get(data.toUserId);
+        const fromUser = users.get(fromUserId);
+        if (!toUser || !fromUser) return;
+
+        io.to(toUser.socketId).emit("newIceCandidate", {
+          fromUserId: fromUser.id,
+          candidate: data.candidate,
+        });
+      }
+    );
+
+    // Call ended
+    socket.on("videoCallEnded", (toUserId: string) => {
+      const fromUserId = userSockets.get(socket.id);
+      if (!fromUserId) return;
+      const toUser = users.get(toUserId);
+      if (!toUser) return;
+      io.to(toUser.socketId).emit("videoCallEnded", { fromUserId });
+    });
+
+    // Call declined
+    socket.on("videoCallDeclined", (toUserId: string) => {
+      const fromUserId = userSockets.get(socket.id);
+      if (!fromUserId) return;
+      const toUser = users.get(toUserId);
+      if (!toUser) return;
+      io.to(toUser.socketId).emit("videoCallDeclined", { fromUserId });
+    });
+
     // Handle request for current user list
     socket.on("getUserList", () => {
       socket.emit("userList", Array.from(users.values()));

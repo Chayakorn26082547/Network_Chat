@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSocket } from "@/hooks/useSocket";
 import SendIcon from "@mui/icons-material/Send";
+import VideoCallIcon from "@mui/icons-material/VideoCall";
 import AttachFileIcon from "@mui/icons-material/AttachFile"; // --- ADDED ---
 import CloseIcon from "@mui/icons-material/Close"; // --- ADDED ---
 
@@ -214,6 +215,25 @@ export default function PrivateChatModal({
           <div className="flex items-center gap-2 mt-1">
             <span className="w-2 h-2 rounded-full bg-green-400"></span>
             <span className="text-xs text-gray-300">Online</span>
+          </div>
+          <div className="absolute top-5 right-12 flex items-center gap-2">
+            <button
+              onClick={() => {
+                // Trigger global video call starter
+                try {
+                  (window as any).startVideoCall(
+                    chatWithUser.id,
+                    chatWithUser.username
+                  );
+                } catch (e) {
+                  console.error("startVideoCall not available", e);
+                }
+              }}
+              title="Start video call"
+              className="text-[#f8f8f8] hover:text-white mr-2"
+            >
+              <VideoCallIcon />
+            </button>
           </div>
         </div>
 

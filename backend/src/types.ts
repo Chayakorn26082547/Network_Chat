@@ -81,6 +81,16 @@ export interface ServerToClientEvents {
   userLeft: (data: { username: string; users: User[] }) => void;
   previousMessages: (messages: Message[]) => void;
   userList: (users: User[]) => void;
+  // Video call signaling
+  incomingVideoCall: (data: {
+    fromUserId: string;
+    fromUsername: string;
+  }) => void;
+  videoOffer: (data: { fromUserId: string; offer: any }) => void;
+  videoAnswer: (data: { fromUserId: string; answer: any }) => void;
+  newIceCandidate: (data: { fromUserId: string; candidate: any }) => void;
+  videoCallEnded: (data: { fromUserId: string }) => void;
+  videoCallDeclined: (data: { fromUserId: string }) => void;
 }
 
 export interface ClientToServerEvents {
@@ -97,4 +107,11 @@ export interface ClientToServerEvents {
   getUserList: () => void;
   getPreviousMessages: () => void;
   userLeft: (username: string) => void;
+  // Video call signaling
+  videoCallRequest: (toUserId: string) => void;
+  videoOffer: (data: { toUserId: string; offer: any }) => void;
+  videoAnswer: (data: { toUserId: string; answer: any }) => void;
+  newIceCandidate: (data: { toUserId: string; candidate: any }) => void;
+  videoCallEnded: (toUserId: string) => void;
+  videoCallDeclined: (toUserId: string) => void;
 }

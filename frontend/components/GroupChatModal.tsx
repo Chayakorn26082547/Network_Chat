@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { useSocket } from "@/hooks/useSocket";
 import SendIcon from "@mui/icons-material/Send";
 import GroupsIcon from "@mui/icons-material/Groups";
+import AttachFileIcon from "@mui/icons-material/AttachFile"; // --- ADDED ---
+import CloseIcon from "@mui/icons-material/Close"; // --- ADDED ---
 
 interface GroupMessage {
   id: string;
@@ -12,6 +14,10 @@ interface GroupMessage {
   username: string;
   text: string;
   timestamp: number;
+  // --- ADDED ---
+  fileData?: string;
+  fileName?: string;
+  fileType?: string;
 }
 
 interface Group {
@@ -37,9 +43,11 @@ export default function GroupChatModal({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
+  const [file, setFile] = useState<File | null>(null); // --- ADDED ---
   const [isMember, setIsMember] = useState(false);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null); // --- ADDED ---
   const groupIdRef = useRef(group.id);
   const hasRequestedMessages = useRef(false);
 
@@ -83,6 +91,9 @@ export default function GroupChatModal({
 
     // Listen for group messages
     const handleGroupMessage = (msg: GroupMessage) => {
+      // --- ADDED: Log to debug
+      console.log("RECEIVED 'groupMessage' EVENT:", msg);
+
       if (msg.groupId === groupIdRef.current) {
         setMessages((prev) => {
           if (prev.some((m) => m.id === msg.id)) return prev;
@@ -173,6 +184,20 @@ export default function GroupChatModal({
     };
   }, [socket, closeModalCallback]);
 
+  // --- ADDED ---
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+    // Reset input value to allow selecting the same file again
+    e.target.value = "";
+  };
+
+  // --- ADDED ---
+  const removeFile = () => {
+    setFile(null);
+  };
+
   const handleJoinGroup = () => {
     if (!socket || !currentUserId) return;
     socket.emit("joinGroup", group.id);
@@ -183,16 +208,39 @@ export default function GroupChatModal({
     socket.emit("leaveGroup", group.id);
   };
 
+  // --- UPDATED ---
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!socket || !inputValue.trim() || !isMember) return;
+    if (!socket || (!inputValue.trim() && !file) || !isMember) return;
 
-    socket.emit("groupMessage", {
-      groupId: group.id,
-      text: inputValue.trim(),
-    });
-
-    setInputValue("");
+    if (file) {
+      // If there's a file, read it as Data URL (base64)
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const fileData = e.target?.result as string;
+        socket.emit("groupMessage", {
+          groupId: group.id,
+          text: inputValue.trim(),
+          fileData,
+          fileName: file.name,
+          fileType: file.type,
+        });
+        // Reset inputs
+        setFile(null);
+        setInputValue("");
+      };
+      reader.onerror = (error) => {
+        console.error("Error reading file:", error);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // No file, just send text
+      socket.emit("groupMessage", {
+        groupId: group.id,
+        text: inputValue.trim(),
+      });
+      setInputValue("");
+    }
   };
 
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -283,6 +331,9 @@ export default function GroupChatModal({
                   minute: "2-digit",
                 });
                 const isSystemMessage = m.userId === "system";
+                // --- ADDED ---
+                const isImage = m.fileType && m.fileType.startsWith("image/");
+
                 return (
                   <div
                     key={m.id}
@@ -312,7 +363,44 @@ export default function GroupChatModal({
                               : "bg-gray-200 text-gray-900 rounded-bl-none"
                           }`}
                         >
-                          <div>{m.text}</div>
+                          {/* --- START: UPDATED RENDER LOGIC --- */}
+                          {m.fileData && (
+                            <div
+                              className={
+                                m.text ? "mb-2" : "" // Add margin if text follows
+                              }
+                            >
+                              {isImage ? (
+                                <img
+                                  src={m.fileData}
+                                  alt={m.fileName || "Uploaded image"}
+                                  className="rounded-lg max-w-xs max-h-60 object-cover cursor-pointer"
+                                  onClick={() =>
+                                    window.open(m.fileData, "_blank")
+                                  }
+                                />
+                              ) : (
+                                <a
+                                  href={m.fileData}
+                                  download={m.fileName}
+                                  title={m.fileName}
+                                  className={`flex items-center gap-2 p-2 rounded-lg ${
+                                    isSent
+                                      ? "bg-white/10 hover:bg-white/20"
+                                      : "bg-black/10 hover:bg-black/20"
+                                  } transition-all`}
+                                >
+                                  <span className="text-sm font-medium truncate max-w-xs">
+                                    {m.fileName || "Attached File"}
+                                  </span>
+                                  {/* You could add a DownloadIcon here */}
+                                </a>
+                              )}
+                            </div>
+                          )}
+                          {/* Render text if it exists */}
+                          {m.text && <div>{m.text}</div>}
+                          {/* --- END: UPDATED RENDER LOGIC --- */}
                         </div>
                         <div className="text-xs mt-1 opacity-50 text-gray-600">
                           {time}
@@ -330,7 +418,38 @@ export default function GroupChatModal({
         {/* Input Area */}
         {isMember && (
           <div className="bg-gray-50 border-t border-gray-200 py-5 px-3">
+            {/* --- ADDED: File Preview --- */}
+            {file && (
+              <div className="px-3 pb-3 flex items-center justify-between">
+                <span className="text-sm text-gray-600 truncate max-w-xs">
+                  Attaching: <strong>{file.name}</strong>
+                </span>
+                <button
+                  onClick={removeFile}
+                  className="p-1 rounded-full text-gray-500 hover:text-gray-800 hover:bg-gray-200"
+                  title="Remove file"
+                >
+                  <CloseIcon fontSize="small" />
+                </button>
+              </div>
+            )}
             <form onSubmit={handleSend} className="flex items-center gap-3">
+              {/* --- ADDED: File Input Button --- */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-3 rounded-full text-gray-600 hover:bg-gray-200 transition-all"
+                title="Attach file"
+              >
+                <AttachFileIcon />
+              </button>
+              {/* --- ADDED: Hidden File Input --- */}
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+              />
               <input
                 type="text"
                 className="flex-1 px-5 py-3 rounded-full border border-gray-300 focus:outline-none focus:border-[#252524] focus:ring-1 focus:ring-[#252524]/50 text-sm placeholder-gray-400"
@@ -341,7 +460,7 @@ export default function GroupChatModal({
               />
               <button
                 type="submit"
-                disabled={!inputValue.trim()}
+                disabled={!inputValue.trim() && !file} // --- UPDATED ---
                 className="p-3 rounded-full bg-[#252524] text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 <SendIcon />

@@ -11,6 +11,9 @@ export interface Message {
   text: string;
   timestamp: number;
   userId: string;
+  fileData?: string; // Base64 data URL
+  fileName?: string;
+  fileType?: string;
 }
 
 export interface PrivateMessage {
@@ -21,6 +24,9 @@ export interface PrivateMessage {
   toUsername: string;
   text: string;
   timestamp: number;
+  fileData?: string;
+  fileName?: string;
+  fileType?: string;
 }
 
 export interface Group {
@@ -39,6 +45,9 @@ export interface GroupMessage {
   username: string;
   text: string;
   timestamp: number;
+  fileData?: string;
+  fileName?: string;
+  fileType?: string;
 }
 
 export interface ServerToClientEvents {

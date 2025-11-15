@@ -148,112 +148,147 @@ io.on(
     });
 
     // Handle message sending
-    socket.on("message", (data: { username: string; text: string }) => {
-      const message: Message = {
-        id: randomUUID(),
-        username: data.username,
-        text: data.text,
-        timestamp: Date.now(),
-        userId: userSockets.get(socket.id) || "unknown",
-      };
+    // Handle message sending
+    socket.on(
+      "message",
+      (data: {
+        username: string;
+        text: string;
+        // --- ADD THESE ---
+        fileData?: string;
+        fileName?: string;
+        fileType?: string;
+      }) => {
+        const message: Message = {
+          id: randomUUID(),
+          username: data.username,
+          text: data.text,
+          timestamp: Date.now(),
+          userId: userSockets.get(socket.id) || "unknown",
 
-      messages.push(message);
+          // --- ADD THESE ---
+          fileData: data.fileData,
+          fileName: data.fileName,
+          fileType: data.fileType,
+        };
 
-      // Keep only last 100 messages
-      if (messages.length > 100) {
-        messages.shift();
+        messages.push(message);
+
+        // Keep only last 100 messages
+        if (messages.length > 100) {
+          messages.shift();
+        }
+
+        console.log(
+          `Message from ${data.username}: ${data.text} ${
+            data.fileName ? `(File: ${data.fileName})` : ""
+          }`
+        );
+
+        // Broadcast to all connected clients
+        io.emit("message", message);
       }
-
-      console.log(`Message from ${data.username}: ${data.text}`);
-
-      // Broadcast to all connected clients
-      io.emit("message", message);
-    });
-
-    // Handle get previous messages
-    socket.on("getPreviousMessages", () => {
-      socket.emit("previousMessages", messages);
-    });
+    );
 
     // Handle private message sending
-    socket.on("privateMessage", (data: { toUserId: string; text: string }) => {
-      console.log("Received privateMessage event:", data);
+    // Handle private message sending
+    socket.on(
+      "privateMessage",
+      (data: {
+        toUserId: string;
+        text: string;
+        // --- ADD THESE ---
+        fileData?: string;
+        fileName?: string;
+        fileType?: string;
+      }) => {
+        console.log("Received privateMessage event:", data);
 
-      const fromUserId = userSockets.get(socket.id);
-      console.log("From user ID:", fromUserId);
+        const fromUserId = userSockets.get(socket.id);
+        console.log("From user ID:", fromUserId);
 
-      if (!fromUserId) {
-        console.log("ERROR: fromUserId not found for socket:", socket.id);
-        return;
-      }
+        if (!fromUserId) {
+          console.log("ERROR: fromUserId not found for socket:", socket.id);
+          return;
+        }
 
-      const fromUser = users.get(fromUserId);
-      const toUser = users.get(data.toUserId);
+        const fromUser = users.get(fromUserId);
+        const toUser = users.get(data.toUserId);
 
-      console.log("From user:", fromUser);
-      console.log("To user:", toUser);
+        console.log("From user:", fromUser);
+        console.log("To user:", toUser);
 
-      if (!fromUser || !toUser) {
+        if (!fromUser || !toUser) {
+          console.log(
+            "ERROR: User not found. fromUser:",
+            fromUser,
+            "toUser:",
+            toUser
+          );
+          return;
+        }
+
+        const privateMessage: PrivateMessage = {
+          id: randomUUID(),
+          fromUserId: fromUser.id,
+          fromUsername: fromUser.username,
+          toUserId: toUser.id,
+          toUsername: toUser.username,
+          text: data.text,
+          timestamp: Date.now(),
+
+          // --- ADD THESE ---
+          fileData: data.fileData,
+          fileName: data.fileName,
+          fileType: data.fileType,
+        };
+
+        // Store private message
+        const chatRoomKey = getChatRoomKey(fromUserId, data.toUserId);
+        // ... (rest of the function is fine)
+
+        console.log("Chat room key for storage:", chatRoomKey);
+
+        if (!privateMessages.has(chatRoomKey)) {
+          privateMessages.set(chatRoomKey, []);
+          console.log("Created new chat room:", chatRoomKey);
+        }
+        const roomMessages = privateMessages.get(chatRoomKey)!;
+        roomMessages.push(privateMessage);
+
         console.log(
-          "ERROR: User not found. fromUser:",
-          fromUser,
-          "toUser:",
-          toUser
+          "Stored message. Total messages in room",
+          chatRoomKey,
+          ":",
+          roomMessages.length
         );
-        return;
+
+        // Keep only last 100 messages per chat room
+        if (roomMessages.length > 100) {
+          roomMessages.shift();
+        }
+
+        console.log(
+          `Private message from ${fromUser.username} to ${toUser.username}: ${
+            data.text
+          } ${data.fileName ? `(File: ${data.fileName})` : ""}`
+        );
+        console.log(
+          "Sending to socket IDs - sender:",
+          socket.id,
+          "receiver:",
+          toUser.socketId
+        );
+
+        // Send to sender
+        socket.emit("privateMessage", privateMessage);
+
+        // Send to receiver
+        io.to(toUser.socketId).emit("privateMessage", privateMessage);
+
+        console.log("Private message sent successfully");
       }
-
-      const privateMessage: PrivateMessage = {
-        id: randomUUID(),
-        fromUserId: fromUser.id,
-        fromUsername: fromUser.username,
-        toUserId: toUser.id,
-        toUsername: toUser.username,
-        text: data.text,
-        timestamp: Date.now(),
-      };
-
-      // Store private message
-      const chatRoomKey = getChatRoomKey(fromUserId, data.toUserId);
-      console.log("Chat room key for storage:", chatRoomKey);
-
-      if (!privateMessages.has(chatRoomKey)) {
-        privateMessages.set(chatRoomKey, []);
-        console.log("Created new chat room:", chatRoomKey);
-      }
-      const roomMessages = privateMessages.get(chatRoomKey)!;
-      roomMessages.push(privateMessage);
-
-      console.log(
-        "Stored message. Total messages in room",
-        chatRoomKey,
-        ":",
-        roomMessages.length
-      );
-
-      // Keep only last 100 messages per chat room
-      if (roomMessages.length > 100) {
-        roomMessages.shift();
-      }
-
-      console.log(
-        `Private message from ${fromUser.username} to ${toUser.username}: ${data.text}`
-      );
-      console.log(
-        "Sending to socket IDs - sender:",
-        socket.id,
-        "receiver:",
-        toUser.socketId
-      );
-
-      // Send to sender
-      socket.emit("privateMessage", privateMessage);
-
-      // Send to receiver
-      io.to(toUser.socketId).emit("privateMessage", privateMessage);
-
-      console.log("Private message sent successfully");
-    });
+    );
 
     // Handle get previous private messages
     socket.on("getPreviousPrivateMessages", (chatWithUserId: string) => {
@@ -429,53 +464,70 @@ io.on(
     });
 
     // Handle group message
-    socket.on("groupMessage", (data: { groupId: string; text: string }) => {
-      const userId = userSockets.get(socket.id);
-      if (!userId) return;
+    socket.on(
+      "groupMessage",
+      (data: {
+        groupId: string;
+        text: string;
+        // --- ADD THESE ---
+        fileData?: string;
+        fileName?: string;
+        fileType?: string;
+      }) => {
+        const userId = userSockets.get(socket.id);
+        if (!userId) return;
 
-      const user = users.get(userId);
-      const group = groups.get(data.groupId);
+        const user = users.get(userId);
+        const group = groups.get(data.groupId);
 
-      if (!user || !group) return;
+        if (!user || !group) return;
 
-      // Check if user is a member of the group
-      if (!group.members.includes(userId)) {
-        console.log(
-          `${user.username} tried to send message to group they're not in`
-        );
-        return;
-      }
-
-      const groupMessage: GroupMessage = {
-        id: randomUUID(),
-        groupId: data.groupId,
-        userId: userId,
-        username: user.username,
-        text: data.text,
-        timestamp: Date.now(),
-      };
-
-      // Store message
-      const messages = groupMessages.get(data.groupId)!;
-      messages.push(groupMessage);
-
-      // Keep only last 100 messages per group
-      if (messages.length > 100) {
-        messages.shift();
-      }
-
-      console.log(
-        `Group message in "${group.name}" from ${user.username}: ${data.text}`
-      );
-
-      // Send to all group members
-      group.members.forEach((memberId) => {
-        const member = users.get(memberId);
-        if (member) {
-          io.to(member.socketId).emit("groupMessage", groupMessage);
+        // Check if user is a member of the group
+        if (!group.members.includes(userId)) {
+          console.log(
+            `${user.username} tried to send message to group they're not in`
+          );
+          return;
         }
-      });
-    });
+
+        const groupMessage: GroupMessage = {
+          id: randomUUID(),
+          groupId: data.groupId,
+          userId: userId,
+          username: user.username,
+          text: data.text,
+          timestamp: Date.now(),
+
+          // --- ADD THESE ---
+          fileData: data.fileData,
+          fileName: data.fileName,
+          fileType: data.fileType,
+        };
+
+        // Store message
+        const messages = groupMessages.get(data.groupId)!;
+        messages.push(groupMessage);
+
+        // Keep only last 100 messages per group
+        if (messages.length > 100) {
+          messages.shift();
+        }
+
+        console.log(
+          `Group message in "${group.name}" from ${user.username}: ${
+            data.text
+          } ${data.fileName ? `(File: ${data.fileName})` : ""}`
+        );
+
+        // Send to all group members
+        group.members.forEach((memberId) => {
+          const member = users.get(memberId);
+          if (member) {
+            io.to(member.socketId).emit("groupMessage", groupMessage);
+          }
+        });
+      }
+    );
 
     // Handle get previous group messages
     socket.on("getPreviousGroupMessages", (groupId: string) => {

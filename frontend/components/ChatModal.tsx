@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { useSocket } from "@/hooks/useSocket";
-import { Button } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 
 interface Message {
@@ -18,6 +17,16 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll to bottom when new messages arrive
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   useEffect(() => {
     const saved =
@@ -31,19 +40,31 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
     }
     setUsername(saved);
 
-    if (socket) {
-      socket.on("message", (m: Message) => setMessages((prev) => [...prev, m]));
-      socket.on("previousMessages", (prev: Message[]) => setMessages(prev));
+    if (!socket) return;
+
+    const handleMessage = (m: Message) => setMessages((prev) => [...prev, m]);
+    const handlePreviousMessages = (prev: Message[]) => setMessages(prev);
+
+    const handleConnect = () => {
+      console.log("World chat reconnected, reloading messages...");
+      socket.emit("getPreviousMessages");
+    };
+
+    socket.on("connect", handleConnect);
+    socket.on("message", handleMessage);
+    socket.on("previousMessages", handlePreviousMessages);
+
+    // Initial load or when connected
+    if (connected) {
       socket.emit("getPreviousMessages");
     }
 
     return () => {
-      if (socket) {
-        socket.off("message");
-        socket.off("previousMessages");
-      }
+      socket.off("connect", handleConnect);
+      socket.off("message", handleMessage);
+      socket.off("previousMessages", handlePreviousMessages);
     };
-  }, [socket, onClose]);
+  }, [socket, connected, onClose]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,6 +132,7 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
               );
             })
           )}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input Area */}
@@ -123,7 +145,13 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setInputValue(e.target.value)}
               placeholder="Message..."
             />
-            <Button color="inherit" startIcon={<SendIcon />} />
+            <button
+              type="submit"
+              disabled={!inputValue.trim()}
+              className="p-3 rounded-full bg-[#252524] text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              <SendIcon />
+            </button>
           </form>
         </div>
 

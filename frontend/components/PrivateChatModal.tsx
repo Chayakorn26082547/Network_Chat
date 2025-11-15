@@ -44,6 +44,8 @@ export default function PrivateChatModal({
   const modalRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null); // --- ADDED ---
+  const hasRequestedMessages = useRef(false);
+  const chatWithUserIdRef = useRef(chatWithUser.id);
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -63,6 +65,11 @@ export default function PrivateChatModal({
     setCurrentUsername(savedUsername);
 
     if (!socket) return;
+    // Reset the "requested" flag only when switching to a different chat
+    if (chatWithUserIdRef.current !== chatWithUser.id) {
+      chatWithUserIdRef.current = chatWithUser.id;
+      hasRequestedMessages.current = false;
+    }
 
     // Get current user ID
     const handleUserList = (users: User[]) => {
@@ -100,13 +107,25 @@ export default function PrivateChatModal({
       messages: PrivateMessage[];
     }) => {
       if (data.chatWithUserId === chatWithUser.id) {
-        setMessages(data.messages);
+        setMessages((prev) => {
+          // Avoid replacing messages with an identical payload (prevents unnecessary rerenders/scroll)
+          if (
+            prev.length === data.messages.length &&
+            prev.every((m, i) => m.id === data.messages[i].id)
+          ) {
+            return prev;
+          }
+          return data.messages;
+        });
       }
     };
 
     const handleConnect = () => {
       setTimeout(() => {
-        socket.emit("getPreviousPrivateMessages", chatWithUser.id);
+        if (!hasRequestedMessages.current) {
+          hasRequestedMessages.current = true;
+          socket.emit("getPreviousPrivateMessages", chatWithUser.id);
+        }
       }, 100);
     };
 
@@ -114,7 +133,11 @@ export default function PrivateChatModal({
     socket.on("privateMessage", handlePrivateMessage);
     socket.on("previousPrivateMessages", handlePreviousPrivateMessages);
 
-    socket.emit("getPreviousPrivateMessages", chatWithUser.id);
+    // Request previous messages on initial mount (only once)
+    if (!hasRequestedMessages.current) {
+      hasRequestedMessages.current = true;
+      socket.emit("getPreviousPrivateMessages", chatWithUser.id);
+    }
 
     return () => {
       socket.off("connect", handleConnect);

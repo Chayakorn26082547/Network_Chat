@@ -10,10 +10,18 @@ interface IncomingCall {
   fromUsername: string;
 }
 
+interface User {
+  id: string;
+  username: string;
+  socketId: string;
+  avatar?: string;
+}
+
 export default function IncomingCallNotification() {
   const { socket } = useSocket();
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [dots, setDots] = useState(".");
+  const [userMap, setUserMap] = useState<Record<string, User>>({});
 
   useEffect(() => {
     if (!socket) return;
@@ -21,6 +29,8 @@ export default function IncomingCallNotification() {
     const handleIncomingCall = (data: IncomingCall) => {
       console.log("[IncomingCallNotification] Incoming call from", data);
       setIncomingCall(data);
+      // Ensure we have fresh user list (in case we haven't yet)
+      socket.emit("getUserList");
     };
 
     const handleCallDeclined = (data: { fromUserId: string }) => {
@@ -35,10 +45,22 @@ export default function IncomingCallNotification() {
     socket.on("videoCallDeclined", handleCallDeclined);
     socket.on("videoCallEnded", handleCallEnded);
 
+    // Listen for user list to resolve avatar
+    const handleUserList = (users: User[]) => {
+      const map: Record<string, User> = {};
+      users.forEach((u) => (map[u.id] = u));
+      setUserMap(map);
+    };
+    socket.on("userList", handleUserList);
+
+    // Request list on mount to populate avatars early
+    socket.emit("getUserList");
+
     return () => {
       socket.off("incomingVideoCall", handleIncomingCall);
       socket.off("videoCallDeclined", handleCallDeclined);
       socket.off("videoCallEnded", handleCallEnded);
+      socket.off("userList", handleUserList);
     };
   }, [socket]);
 
@@ -81,6 +103,18 @@ export default function IncomingCallNotification() {
 
   if (!incomingCall) return null;
 
+  // Resolve avatar from user map by ID first, else by username fallback
+  const callerUser = incomingCall.fromUserId
+    ? userMap[incomingCall.fromUserId]
+    : Object.values(userMap).find(
+        (u) => u.username === incomingCall.fromUsername
+      );
+  const avatarUrl =
+    callerUser?.avatar ||
+    `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
+      incomingCall.fromUsername
+    )}`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
       <div className="bg-white rounded-lg shadow-2xl p-6 w-60">
@@ -89,8 +123,13 @@ export default function IncomingCallNotification() {
             Incoming video call{dots}
           </p>
 
-          {/* User Profile Placeholder */}
-          <div className="w-24 h-24 bg-gray-300 rounded-full mb-3 animate-pulse"></div>
+          {/* Caller Avatar */}
+          <img
+            src={avatarUrl}
+            alt={`${incomingCall.fromUsername} avatar`}
+            className="w-24 h-24 rounded-full mb-3 object-cover shadow-md ring-2 ring-[#252524]/20"
+            draggable={false}
+          />
 
           <p className="font-semibold text-gray-900 text-lg">
             {incomingCall.fromUsername}

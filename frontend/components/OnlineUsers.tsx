@@ -7,6 +7,7 @@ interface User {
   id: string;
   username: string;
   socketId: string;
+  avatar?: string;
 }
 
 interface OnlineUsersProps {
@@ -41,8 +42,12 @@ export default function OnlineUsers({ onUserClick }: OnlineUsersProps) {
       console.log("Socket connected, re-authenticating...");
       // Re-authenticate user on reconnect
       const savedUsername = localStorage.getItem("chatUsername");
+      const savedAvatar = localStorage.getItem("chatAvatar");
       if (savedUsername) {
-        socket.emit("setUsername", savedUsername);
+        socket.emit("setUsername", {
+          username: savedUsername,
+          avatar: savedAvatar || undefined,
+        });
       }
       // Request user list
       socket.emit("getUserList");
@@ -55,8 +60,12 @@ export default function OnlineUsers({ onUserClick }: OnlineUsersProps) {
 
     // Initial setup
     const savedUsername = localStorage.getItem("chatUsername");
+    const savedAvatar = localStorage.getItem("chatAvatar");
     if (savedUsername) {
-      socket.emit("setUsername", savedUsername);
+      socket.emit("setUsername", {
+        username: savedUsername,
+        avatar: savedAvatar || undefined,
+      });
     }
     socket.emit("getUserList");
 
@@ -107,13 +116,17 @@ export default function OnlineUsers({ onUserClick }: OnlineUsersProps) {
                 }`}
                 onClick={() => !isCurrentUser && onUserClick && onUserClick(u)}
               >
-                <div
-                  className={`absolute inset-0 rounded-full bg-gray-300 transition-all duration-200 ${
-                    !isCurrentUser
-                      ? "hover:scale-110 hover:shadow-xl hover:bg-gray-400"
-                      : ""
+                <img
+                  src={
+                    u.avatar ||
+                    `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
+                      u.username
+                    )}`
+                  }
+                  alt={`${u.username} avatar`}
+                  className={`absolute inset-0 w-full h-full rounded-full object-cover transition-all duration-200 ${
+                    !isCurrentUser ? "hover:scale-110 hover:shadow-xl" : ""
                   }`}
-                  aria-hidden
                 />
                 {/* online indicator */}
                 <span

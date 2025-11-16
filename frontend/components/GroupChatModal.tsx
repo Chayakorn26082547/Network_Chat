@@ -19,6 +19,12 @@ interface GroupMessage {
   fileName?: string;
   fileType?: string;
 }
+interface User {
+  id: string;
+  username: string;
+  socketId: string;
+  avatar?: string;
+}
 
 interface Group {
   id: string;
@@ -50,6 +56,10 @@ export default function GroupChatModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null); // --- ADDED ---
   const groupIdRef = useRef(group.id);
   const hasRequestedMessages = useRef(false);
+  const [userMap, setUserMap] = useState<Record<string, User>>({});
+  const currentAvatar =
+    (typeof window !== "undefined" && localStorage.getItem("chatAvatar")) ||
+    undefined;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -74,7 +84,7 @@ export default function GroupChatModal({
     if (!socket) return;
 
     // Get current user ID and check membership
-    const handleUserList = (users: any[]) => {
+    const handleUserList = (users: User[]) => {
       const currentUser = users.find((u) => u.username === savedUsername);
       if (currentUser) {
         setCurrentUserId(currentUser.id);
@@ -87,6 +97,9 @@ export default function GroupChatModal({
           socket.emit("getPreviousGroupMessages", groupIdRef.current);
         }
       }
+      const map: Record<string, User> = {};
+      users.forEach((u) => (map[u.username] = u));
+      setUserMap(map);
     };
 
     // Listen for group messages
@@ -334,15 +347,20 @@ export default function GroupChatModal({
                 // --- ADDED ---
                 const isImage = m.fileType && m.fileType.startsWith("image/");
 
+                const avatar =
+                  (isSent ? currentAvatar : userMap[m.username]?.avatar) ||
+                  `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
+                    m.username
+                  )}`;
                 return (
                   <div
                     key={m.id}
-                    className={`flex flex-col ${
+                    className={`flex ${
                       isSystemMessage
-                        ? "items-center"
+                        ? "justify-center"
                         : isSent
-                        ? "items-end"
-                        : "items-start"
+                        ? "justify-end"
+                        : "justify-start"
                     }`}
                   >
                     {isSystemMessage ? (
@@ -351,58 +369,68 @@ export default function GroupChatModal({
                       </div>
                     ) : (
                       <>
-                        {!isSent && (
-                          <div className="text-xs font-semibold mb-2 text-gray-600">
-                            {m.username}
-                          </div>
-                        )}
                         <div
-                          className={`max-w-sm px-5 py-3 rounded-2xl text-sm leading-relaxed ${
-                            isSent
-                              ? "bg-[#252524] text-white rounded-br-none"
-                              : "bg-gray-200 text-gray-900 rounded-bl-none"
+                          className={`flex items-end gap-2 max-w-full ${
+                            isSent ? "flex-row-reverse" : "flex-row"
                           }`}
                         >
-                          {/* --- START: UPDATED RENDER LOGIC --- */}
-                          {m.fileData && (
-                            <div
-                              className={
-                                m.text ? "mb-2" : "" // Add margin if text follows
-                              }
-                            >
-                              {isImage ? (
-                                <img
-                                  src={m.fileData}
-                                  alt={m.fileName || "Uploaded image"}
-                                  className="rounded-lg max-w-xs max-h-60 object-cover cursor-pointer"
-                                  onClick={() =>
-                                    window.open(m.fileData, "_blank")
-                                  }
-                                />
-                              ) : (
-                                <a
-                                  href={m.fileData}
-                                  download={m.fileName}
-                                  title={m.fileName}
-                                  className={`flex items-center gap-2 p-2 rounded-lg ${
-                                    isSent
-                                      ? "bg-white/10 hover:bg-white/20"
-                                      : "bg-black/10 hover:bg-black/20"
-                                  } transition-all`}
-                                >
-                                  <span className="text-sm font-medium truncate max-w-xs">
-                                    {m.fileName || "Attached File"}
-                                  </span>
-                                  {/* You could add a DownloadIcon here */}
-                                </a>
-                              )}
-                            </div>
-                          )}
-                          {/* Render text if it exists */}
-                          {m.text && <div>{m.text}</div>}
-                          {/* --- END: UPDATED RENDER LOGIC --- */}
+                          <img
+                            src={avatar}
+                            alt={`${m.username} avatar`}
+                            className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                          />
+                          <div
+                            className={`max-w-sm px-5 py-3 rounded-2xl text-sm leading-relaxed ${
+                              isSent
+                                ? "bg-[#252524] text-white rounded-br-none"
+                                : "bg-gray-200 text-gray-900 rounded-bl-none"
+                            }`}
+                          >
+                            {/* --- START: UPDATED RENDER LOGIC --- */}
+                            {m.fileData && (
+                              <div
+                                className={
+                                  m.text ? "mb-2" : "" // Add margin if text follows
+                                }
+                              >
+                                {isImage ? (
+                                  <img
+                                    src={m.fileData}
+                                    alt={m.fileName || "Uploaded image"}
+                                    className="rounded-lg max-w-xs max-h-60 object-cover cursor-pointer"
+                                    onClick={() =>
+                                      window.open(m.fileData, "_blank")
+                                    }
+                                  />
+                                ) : (
+                                  <a
+                                    href={m.fileData}
+                                    download={m.fileName}
+                                    title={m.fileName}
+                                    className={`flex items-center gap-2 p-2 rounded-lg ${
+                                      isSent
+                                        ? "bg-white/10 hover:bg-white/20"
+                                        : "bg-black/10 hover:bg-black/20"
+                                    } transition-all`}
+                                  >
+                                    <span className="text-sm font-medium truncate max-w-xs">
+                                      {m.fileName || "Attached File"}
+                                    </span>
+                                    {/* You could add a DownloadIcon here */}
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                            {/* Render text if it exists */}
+                            {m.text && <div>{m.text}</div>}
+                            {/* --- END: UPDATED RENDER LOGIC --- */}
+                          </div>
                         </div>
-                        <div className="text-xs mt-1 opacity-50 text-gray-600">
+                        <div
+                          className={`text-xs mt-1 opacity-50 text-gray-600 ${
+                            isSent ? "text-right" : "text-left"
+                          }`}
+                        >
                           {time}
                         </div>
                       </>

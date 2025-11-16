@@ -82,7 +82,7 @@ The frontend will run on `http://localhost:3000`
 
 #### Client to Server
 
-- `setUsername(username: string)` - Set user's username
+- `setUsername(data: string | { username: string; avatar?: string })` - Set user's username (and optional avatar URL)
 - `message({username, text})` - Send a message
 - `getPreviousMessages()` - Request message history
 - `userLeft(username)` - Notify user is leaving

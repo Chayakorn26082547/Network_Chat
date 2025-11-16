@@ -3,6 +3,7 @@ export interface User {
   username: string;
   socketId: string;
   joinedAt: number;
+  avatar?: string;
 }
 
 export interface Message {
@@ -94,7 +95,14 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
-  setUsername: (username: string) => void;
+  setUsername: (
+    data:
+      | string
+      | {
+          username: string;
+          avatar?: string;
+        }
+  ) => void;
   message: (data: { username: string; text: string }) => void;
   privateMessage: (data: { toUserId: string; text: string }) => void;
   getPreviousPrivateMessages: (chatWithUserId: string) => void;

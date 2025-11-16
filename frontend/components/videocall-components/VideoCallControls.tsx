@@ -23,7 +23,7 @@ export default function VideoCallControls({
   onHangup,
 }: VideoCallControlsProps) {
   return (
-    <div className="absolute bottom-4 right-4 flex gap-3">
+    <div className="absolute bottom-4 right-4 flex gap-3 z-10">
       <button
         onClick={onToggleMute}
         className={`w-12 h-12 flex items-center justify-center rounded-full transition-colors shadow-lg ${

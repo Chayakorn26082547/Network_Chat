@@ -13,6 +13,7 @@ interface User {
   id: string;
   username: string;
   socketId: string;
+  avatar?: string;
 }
 
 interface Group {
@@ -47,7 +48,11 @@ export default function ChatPage() {
     if (!socket) return;
 
     console.log("Chat page: Re-authenticating user:", savedUsername);
-    socket.emit("setUsername", savedUsername);
+    const savedAvatar = localStorage.getItem("chatAvatar");
+    socket.emit("setUsername", {
+      username: savedUsername,
+      avatar: savedAvatar || undefined,
+    });
 
     // Get current user ID
     const handleUserList = (userList: User[]) => {

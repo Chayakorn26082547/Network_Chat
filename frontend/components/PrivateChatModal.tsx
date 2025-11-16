@@ -25,6 +25,7 @@ interface User {
   id: string;
   username: string;
   socketId: string;
+  avatar?: string;
 }
 
 interface PrivateChatModalProps {
@@ -47,6 +48,9 @@ export default function PrivateChatModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null); // --- ADDED ---
   const hasRequestedMessages = useRef(false);
   const chatWithUserIdRef = useRef(chatWithUser.id);
+  const currentAvatar =
+    (typeof window !== "undefined" && localStorage.getItem("chatAvatar")) ||
+    undefined;
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -264,55 +268,71 @@ export default function PrivateChatModal({
                       isSent ? "items-end" : "items-start"
                     }`}
                   >
-                    {!isSent && (
-                      <div className="text-xs font-semibold mb-2 text-gray-600">
-                        {m.fromUsername}
-                      </div>
-                    )}
                     <div
-                      className={`max-w-sm px-5 py-3 rounded-2xl text-sm leading-relaxed ${
-                        isSent
-                          ? "bg-[#252524] text-white rounded-br-none"
-                          : "bg-gray-200 text-gray-900 rounded-bl-none"
+                      className={`flex items-end gap-2 max-w-full ${
+                        isSent ? "flex-row-reverse" : "flex-row"
                       }`}
                     >
-                      {/* --- START: UPDATED RENDER LOGIC --- */}
-                      {m.fileData && (
-                        <div
-                          className={
-                            m.text ? "mb-2" : "" // Add margin if text follows
-                          }
-                        >
-                          {isImage ? (
-                            <img
-                              src={m.fileData}
-                              alt={m.fileName || "Uploaded image"}
-                              className="rounded-lg max-w-xs max-h-60 object-cover cursor-pointer"
-                              onClick={() => window.open(m.fileData, "_blank")}
-                            />
-                          ) : (
-                            <a
-                              href={m.fileData}
-                              download={m.fileName}
-                              title={m.fileName}
-                              className={`flex items-center gap-2 p-2 rounded-lg ${
-                                isSent
-                                  ? "bg-white/10 hover:bg-white/20"
-                                  : "bg-black/10 hover:bg-black/20"
-                              } transition-all`}
-                            >
-                              <span className="text-sm font-medium truncate max-w-xs">
-                                {m.fileName || "Attached File"}
-                              </span>
-                            </a>
-                          )}
-                        </div>
-                      )}
-                      {/* Render text if it exists */}
-                      {m.text && <div>{m.text}</div>}
-                      {/* --- END: UPDATED RENDER LOGIC --- */}
+                      <img
+                        src={
+                          (isSent ? currentAvatar : chatWithUser.avatar) ||
+                          `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
+                            isSent
+                              ? currentUsername || "you"
+                              : chatWithUser.username
+                          )}`
+                        }
+                        alt={`${
+                          isSent ? currentUsername : chatWithUser.username
+                        } avatar`}
+                        className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                      />
+
+                      {/* MESSAGE BUBBLE */}
+                      <div
+                        className={`max-w-sm px-5 py-3 rounded-2xl text-sm leading-relaxed ${
+                          isSent
+                            ? "bg-[#252524] text-white rounded-br-none"
+                            : "bg-gray-200 text-gray-900 rounded-bl-none"
+                        }`}
+                      >
+                        {/* FILE PREVIEW */}
+                        {m.fileData && (
+                          <div className={m.text ? "mb-2" : ""}>
+                            {isImage ? (
+                              <img
+                                src={m.fileData}
+                                alt={m.fileName || "Uploaded image"}
+                                className="rounded-lg max-w-xs max-h-60 object-cover cursor-pointer"
+                                onClick={() =>
+                                  window.open(m.fileData, "_blank")
+                                }
+                              />
+                            ) : (
+                              <a
+                                href={m.fileData}
+                                download={m.fileName}
+                                className="flex items-center gap-2 p-3 rounded-lg bg-black/10 hover:bg-black/20 transition-all"
+                              >
+                                <span className="text-sm font-medium truncate max-w-xs">
+                                  {m.fileName || "Attached File"}
+                                </span>
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        {/* TEXT */}
+                        {m.text && <div>{m.text}</div>}
+                      </div>
                     </div>
-                    <div className="text-xs mt-1 opacity-50 text-gray-600">
+
+                    {/* TIMESTAMP BELOW BUBBLE */}
+                    <div
+                      className={`text-xs mt-1 opacity-50 relative ${
+                        isSent ? "right-10" : "left-10"
+                      }`}
+                    >
                       {time}
                     </div>
                   </div>

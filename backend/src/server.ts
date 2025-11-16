@@ -97,73 +97,81 @@ app.get("/debug/private-messages", (req, res) => {
 io.on(
   "connection",
   (socket: Socket<ClientToServerEvents, ServerToClientEvents>) => {
-    // Handle username setup
-    socket.on("setUsername", (username: string) => {
-      const normalizedUsername = username.trim().toLowerCase();
+    // Handle username setup (supports string or object with avatar)
+    socket.on(
+      "setUsername",
+      (payload: string | { username: string; avatar?: string }) => {
+        const username =
+          typeof payload === "string" ? payload : payload.username;
+        const avatar = typeof payload === "string" ? undefined : payload.avatar;
 
-      // Check if this username is already connected from a different socket
-      const existingUser = Array.from(users.values()).find(
-        (u) =>
-          u.username.toLowerCase() === normalizedUsername &&
-          u.socketId !== socket.id
-      );
+        const normalizedUsername = username.trim().toLowerCase();
 
-      if (existingUser) {
-        console.log(
-          `Username ${username} already in use by another connection`
+        // Check if this username is already connected from a different socket
+        const existingUser = Array.from(users.values()).find(
+          (u) =>
+            u.username.toLowerCase() === normalizedUsername &&
+            u.socketId !== socket.id
         );
-        socket.emit("userJoined", {
-          username: "System",
+
+        if (existingUser) {
+          console.log(
+            `Username ${username} already in use by another connection`
+          );
+          socket.emit("userJoined", {
+            username: "System",
+            users: Array.from(users.values()),
+          });
+          return;
+        }
+
+        // Get or create persistent user ID for this username
+        let userId = usernameToUserId.get(normalizedUsername);
+        if (!userId) {
+          userId = randomUUID();
+          usernameToUserId.set(normalizedUsername, userId);
+          console.log(`Created new persistent userId for ${username}:`, userId);
+        } else {
+          console.log(`Reusing existing userId for ${username}:`, userId);
+          // Clean up old socket mapping if user is reconnecting
+          const oldUser = users.get(userId);
+          if (oldUser && oldUser.socketId !== socket.id) {
+            console.log(
+              `Cleaning up old socket mapping for ${username}: ${oldUser.socketId} -> ${socket.id}`
+            );
+            userSockets.delete(oldUser.socketId);
+          }
+        }
+
+        const user: User = {
+          id: userId,
+          username: username.trim(),
+          socketId: socket.id,
+          joinedAt: Date.now(),
+          avatar,
+        };
+
+        users.set(userId, user);
+        userSockets.set(socket.id, userId);
+
+        // Join room with username
+        socket.join(username);
+
+        console.log(`User set: ${username} (${userId}) - socket: ${socket.id}`);
+
+        // Notify everyone
+        io.emit("userJoined", {
+          username,
           users: Array.from(users.values()),
         });
-        return;
+
+        // Send current user list
+        socket.emit("userList", Array.from(users.values()));
+
+        // Send previous messages to new user
+        socket.emit("previousMessages", messages);
       }
-
-      // Get or create persistent user ID for this username
-      let userId = usernameToUserId.get(normalizedUsername);
-      if (!userId) {
-        userId = randomUUID();
-        usernameToUserId.set(normalizedUsername, userId);
-        console.log(`Created new persistent userId for ${username}:`, userId);
-      } else {
-        console.log(`Reusing existing userId for ${username}:`, userId);
-        // Clean up old socket mapping if user is reconnecting
-        const oldUser = users.get(userId);
-        if (oldUser && oldUser.socketId !== socket.id) {
-          console.log(
-            `Cleaning up old socket mapping for ${username}: ${oldUser.socketId} -> ${socket.id}`
-          );
-          userSockets.delete(oldUser.socketId);
-        }
-      }
-
-      const user: User = {
-        id: userId,
-        username: username.trim(),
-        socketId: socket.id,
-        joinedAt: Date.now(),
-      };
-
-      users.set(userId, user);
-      userSockets.set(socket.id, userId);
-
-      // Join room with username
-      socket.join(username);
-
-      console.log(`User set: ${username} (${userId}) - socket: ${socket.id}`);
-
-      // Notify everyone
-      io.emit("userJoined", {
-        username,
-        users: Array.from(users.values()),
-      });
-
-      // Send current user list
-      socket.emit("userList", Array.from(users.values()));
-
-      // Send previous messages to new user
-      socket.emit("previousMessages", messages);
-    });
+    );
 
     // Handle message sending
     // Handle message sending

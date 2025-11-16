@@ -11,10 +11,17 @@ interface Message {
   username: string;
   text: string;
   timestamp: number;
+  userId?: string;
   // --- ADDED file fields ---
   fileData?: string; // Base64 data URL
   fileName?: string;
   fileType?: string;
+}
+interface User {
+  id: string;
+  username: string;
+  socketId: string;
+  avatar?: string;
 }
 
 export default function ChatModal({ onClose }: { onClose: () => void }) {
@@ -26,6 +33,10 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
   const modalRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null); // --- ADDED ---
+  const [userMap, setUserMap] = useState<Record<string, User>>({});
+  const currentAvatar =
+    (typeof window !== "undefined" && localStorage.getItem("chatAvatar")) ||
+    undefined;
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -58,9 +69,16 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
       socket.emit("getPreviousMessages");
     };
 
+    const handleUserList = (users: User[]) => {
+      const map: Record<string, User> = {};
+      users.forEach((u) => (map[u.username] = u));
+      setUserMap(map);
+    };
+
     socket.on("connect", handleConnect);
     socket.on("message", handleMessage);
     socket.on("previousMessages", handlePreviousMessages);
+    socket.on("userList", handleUserList);
 
     // Initial load or when connected
     if (connected) {
@@ -71,6 +89,7 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
       socket.off("connect", handleConnect);
       socket.off("message", handleMessage);
       socket.off("previousMessages", handlePreviousMessages);
+      socket.off("userList", handleUserList);
     };
   }, [socket, connected, onClose]);
 
@@ -141,7 +160,7 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
       <div className="bg-white w-full max-w-2xl h-[80vh] rounded-xl shadow-2xl flex flex-col overflow-hidden relative">
         {/* Header */}
         <div className="h-[8vh] bg-[#252524]  p-5 border-b border-blue-200">
-          <h2 className="ml-3 mt-3 text-xl font-bold text-[#f8f8f8]">
+          <h2 className="ml-5 mt-5 text-xl font-bold text-[#f8f8f8]">
             World Chat
           </h2>
         </div>
@@ -156,14 +175,20 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             messages.map((m) => {
-              console.log("MESSAGE FROM SOCKET:", m);
               const isSent = m.username === username;
+
               const time = new Date(m.timestamp).toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
               });
-              // --- ADDED ---
-              const isImage = m.fileType && m.fileType.startsWith("image/");
+
+              const isImage = m.fileType?.startsWith("image/");
+
+              const avatar =
+                (isSent ? currentAvatar : userMap[m.username]?.avatar) ||
+                `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
+                  m.username
+                )}`;
 
               return (
                 <div
@@ -172,61 +197,73 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
                     isSent ? "items-end" : "items-start"
                   }`}
                 >
-                  {!isSent && (
-                    <div className="text-xs font-semibold mb-2 text-gray-600">
-                      {m.username}
-                    </div>
-                  )}
+                  {/* bubble + avatar row */}
                   <div
-                    className={`max-w-sm px-5 py-3 rounded-2xl text-sm leading-relaxed ${
-                      isSent
-                        ? "bg-[#252524] text-white rounded-br-none"
-                        : "bg-gray-200 text-gray-900 rounded-bl-none"
+                    className={`flex items-end gap-2 max-w-full ${
+                      isSent ? "flex-row-reverse" : "flex-row"
                     }`}
                   >
-                    {/* --- UPDATED: Render file if it exists --- */}
-                    {m.fileData && (
-                      <div
-                        className={
-                          m.text ? "mb-2" : "" // Add margin if text follows
-                        }
-                      >
-                        {isImage ? (
-                          <img
-                            src={m.fileData}
-                            alt={m.fileName || "Uploaded image"}
-                            className="rounded-lg max-w-xs max-h-60 object-cover cursor-pointer"
-                            onClick={() => window.open(m.fileData, "_blank")}
-                          />
-                        ) : (
-                          <a
-                            href={m.fileData}
-                            download={m.fileName}
-                            title={m.fileName}
-                            className={`flex items-center gap-2 p-2 rounded-lg ${
-                              isSent
-                                ? "bg-white/10 hover:bg-white/20"
-                                : "bg-black/10 hover:bg-black/20"
-                            } transition-all`}
-                          >
-                            <span className="text-sm font-medium truncate max-w-xs">
-                              {m.fileName || "Attached File"}
-                            </span>
-                            {/* You could add a DownloadIcon here */}
-                          </a>
-                        )}
-                      </div>
-                    )}
-                    {/* Render text if it exists */}
-                    {m.text && <div>{m.text}</div>}
+                    <img
+                      src={avatar}
+                      alt={`${m.username} avatar`}
+                      className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                    />
+
+                    {/* message bubble */}
+                    <div
+                      className={`max-w-sm px-5 py-3 rounded-2xl text-sm leading-relaxed ${
+                        isSent
+                          ? "bg-[#252524] text-white rounded-br-none"
+                          : "bg-gray-200 text-gray-900 rounded-bl-none"
+                      }`}
+                    >
+                      {/* FILE PREVIEW */}
+                      {m.fileData && (
+                        <div className={m.text ? "mb-2" : ""}>
+                          {isImage ? (
+                            <img
+                              src={m.fileData}
+                              alt={m.fileName || "Uploaded image"}
+                              className="rounded-lg max-w-xs max-h-60 object-cover cursor-pointer"
+                              onClick={() => window.open(m.fileData, "_blank")}
+                            />
+                          ) : (
+                            <a
+                              href={m.fileData}
+                              download={m.fileName}
+                              title={m.fileName}
+                              className={`flex items-center gap-2 p-2 rounded-lg ${
+                                isSent
+                                  ? "bg-white/10 hover:bg-white/20"
+                                  : "bg-black/10 hover:bg-black/20"
+                              } transition-all`}
+                            >
+                              <span className="text-sm font-medium truncate max-w-xs">
+                                {m.fileName || "Attached File"}
+                              </span>
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {/* TEXT */}
+                      {m.text && <div>{m.text}</div>}
+                    </div>
                   </div>
-                  <div className="text-xs mt-1 opacity-50 text-gray-600">
+
+                  {/* TIMESTAMP BELOW the bubble */}
+                  <div
+                    className={`text-[10px] opacity-50 mt-1 ${
+                      isSent ? "text-right pr-10" : "text-left pl-10"
+                    }`}
+                  >
                     {time}
                   </div>
                 </div>
               );
             })
           )}
+
           <div ref={messagesEndRef} />
         </div>
 

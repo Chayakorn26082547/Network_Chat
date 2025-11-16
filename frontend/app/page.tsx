@@ -11,10 +11,31 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [inputValue, setInputValue] = useState("");
   const [error, setError] = useState("");
+  const avatarOptions = [
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=aurora",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=blaze",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=cosmo",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=delta",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=ember",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=flora",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=gizmo",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=hazel",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=ion",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=juno",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=kodi",
+    "https://api.dicebear.com/7.x/thumbs/svg?seed=luna",
+  ];
+  const [selectedAvatar, setSelectedAvatar] = useState<string>(
+    avatarOptions[0]
+  );
 
   useEffect(() => {
     // Check if user has already set a username
     const savedUsername = localStorage.getItem("chatUsername");
+    const savedAvatar = localStorage.getItem("chatAvatar");
+    if (savedAvatar) {
+      setSelectedAvatar(savedAvatar);
+    }
     if (savedUsername) {
       setUsername(savedUsername);
       setIsLoading(false);
@@ -46,14 +67,18 @@ export default function Home() {
       return;
     }
 
-    // Save username to localStorage
+    // Save username and avatar to localStorage
     const trimmedUsername = inputValue.trim();
     localStorage.setItem("chatUsername", trimmedUsername);
+    localStorage.setItem("chatAvatar", selectedAvatar);
     setUsername(trimmedUsername);
 
     // Emit username to server via socket
     if (socket) {
-      socket.emit("setUsername", trimmedUsername);
+      socket.emit("setUsername", {
+        username: trimmedUsername,
+        avatar: selectedAvatar,
+      });
     }
 
     // Redirect to chat page
@@ -88,6 +113,34 @@ export default function Home() {
           </p>
 
           <form onSubmit={handleSetUsername} className="space-y-4">
+            <div>
+              <p className="text-sm font-medium text-[#252524] mb-2">
+                Choose your avatar
+              </p>
+              <div className="grid grid-cols-6 gap-3">
+                {avatarOptions.map((url) => (
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() => setSelectedAvatar(url)}
+                    className={`relative rounded-full p-0.5 transition ring-offset-2 focus:outline-none focus:ring-2 focus:ring-[#252524] ${
+                      selectedAvatar === url ? "ring-2 ring-[#252524]" : ""
+                    }`}
+                    aria-label="Select avatar"
+                  >
+                    <img
+                      src={url}
+                      alt="Avatar option"
+                      className={`h-12 w-12 rounded-full bg-gray-100 object-cover shadow ${
+                        selectedAvatar === url ? "scale-105" : ""
+                      }`}
+                      loading="eager"
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div>
               <input
                 type="text"

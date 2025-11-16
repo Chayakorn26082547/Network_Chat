@@ -11,6 +11,13 @@ interface IncomingCall {
   fromUsername: string;
 }
 
+interface User {
+  id: string;
+  username: string;
+  socketId: string;
+  avatar?: string;
+}
+
 export default function VideoCallModal() {
   const { socket } = useSocket();
 
@@ -23,6 +30,7 @@ export default function VideoCallModal() {
   const [dots, setDots] = useState(".");
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const [userMap, setUserMap] = useState<Record<string, User>>({});
 
   // store incoming SimplePeer signals before peer is created (callee side)
   const pendingSignalsRef = useRef<any[]>([]);
@@ -341,13 +349,26 @@ export default function VideoCallModal() {
     socket.on("videoCallEnded", handleCallEnded);
     socket.on("videoCallDeclined", handleCallDeclined);
 
+    const handleUserList = (users: User[]) => {
+      const map: Record<string, User> = {};
+      users.forEach((u) => (map[u.id] = u));
+      setUserMap(map);
+    };
+    socket.on("userList", handleUserList);
+
+    // Fetch user list when modal opens or remote user id changes for avatar
+    if (isOpen) {
+      socket.emit("getUserList");
+    }
+
     return () => {
       socket.off("incomingVideoCall", handleIncomingCall);
       socket.off("videoOffer", handleVideoOffer);
       socket.off("videoCallEnded", handleCallEnded);
       socket.off("videoCallDeclined", handleCallDeclined);
+      socket.off("userList", handleUserList);
     };
-  }, [socket]);
+  }, [socket, isOpen, remoteUserId]);
 
   // Animate dots when waiting for answer
   useEffect(() => {
@@ -375,9 +396,24 @@ export default function VideoCallModal() {
           <div className="bg-white w-full max-w-5xl h-[80vh] rounded-lg shadow-lg p-4 flex flex-col">
             {/* HEADER */}
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold">
-                Video Call {remoteUsername ? `with ${remoteUsername}` : ""}
-              </h3>
+              <div className="flex items-center gap-3 min-w-0">
+                <img
+                  src={
+                    (remoteUserId && userMap[remoteUserId]?.avatar) ||
+                    (remoteUsername
+                      ? `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
+                          remoteUsername
+                        )}`
+                      : "https://api.dicebear.com/7.x/thumbs/svg?seed=connecting")
+                  }
+                  alt={remoteUsername ? `${remoteUsername} avatar` : "Avatar"}
+                  className="w-10 h-10 rounded-full object-cover shadow ring-2 ring-[#252524]/10 flex-shrink-0"
+                  draggable={false}
+                />
+                <h3 className="font-bold truncate">
+                  Video Call {remoteUsername ? `with ${remoteUsername}` : ""}
+                </h3>
+              </div>
             </div>
 
             {/* VIDEOS */}

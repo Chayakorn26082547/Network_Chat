@@ -3,6 +3,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSocket } from "@/hooks/useSocket";
 import SimplePeer from "simple-peer";
+import CallIcon from "@mui/icons-material/Call";
+import VideoCallControls from "@/components/VideoCallControls";
 
 interface IncomingCall {
   fromUserId: string;
@@ -18,6 +20,9 @@ export default function VideoCallModal() {
   const [remoteUsername, setRemoteUsername] = useState<string | null>(null);
   const [remoteUserId, setRemoteUserId] = useState<string | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const [dots, setDots] = useState(".");
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
 
   // store incoming SimplePeer signals before peer is created (callee side)
   const pendingSignalsRef = useRef<any[]>([]);
@@ -171,18 +176,20 @@ export default function VideoCallModal() {
 
   // ------------------ ANSWERER FLOW ------------------
 
-  const acceptIncoming = async () => {
-    if (!incomingCall || !incomingCall.fromUserId) return;
-    const fromUserId = incomingCall.fromUserId;
+  const acceptIncoming = async (fromUserId?: string, fromUsername?: string) => {
+    const userId = fromUserId || incomingCall?.fromUserId;
+    if (!userId) return;
 
-    console.log("[VideoCall] Accepting incoming call from", fromUserId);
+    console.log("[VideoCall] Accepting incoming call from", userId);
 
     setIsCaller(false);
     setIncomingCall(null);
     setIsOpen(true);
+    setRemoteUserId(userId);
+    setRemoteUsername(fromUsername || incomingCall?.fromUsername || null);
 
     // create non-initiator peer
-    const peer = await createPeer(false, fromUserId);
+    const peer = await createPeer(false, userId);
 
     // feed any pending SimplePeer signals we buffered while waiting for Accept
     if (pendingSignalsRef.current.length > 0) {
@@ -194,6 +201,25 @@ export default function VideoCallModal() {
       pendingSignalsRef.current = [];
     }
   };
+
+  // expose global acceptVideoCall(fromUserId, username?)
+  useEffect(() => {
+    (window as any).acceptVideoCall = (
+      fromUserId: string,
+      fromUsername?: string
+    ) => {
+      acceptIncoming(fromUserId, fromUsername);
+    };
+
+    return () => {
+      try {
+        delete (window as any).acceptVideoCall;
+      } catch {
+        // ignore
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, incomingCall]);
 
   const declineIncoming = () => {
     if (incomingCall && socket && incomingCall.fromUserId) {
@@ -251,6 +277,26 @@ export default function VideoCallModal() {
     endCall();
   };
 
+  const toggleMute = () => {
+    if (localStreamRef.current) {
+      const audioTrack = localStreamRef.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        setIsMuted(!audioTrack.enabled);
+      }
+    }
+  };
+
+  const toggleVideo = () => {
+    if (localStreamRef.current) {
+      const videoTrack = localStreamRef.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        setIsVideoOff(!videoTrack.enabled);
+      }
+    }
+  };
+
   // ------------------ SOCKET SIGNALING ------------------
 
   useEffect(() => {
@@ -260,10 +306,9 @@ export default function VideoCallModal() {
     const handleIncomingCall = (data: IncomingCall) => {
       console.log("[Socket] incomingVideoCall", data);
       setIncomingCall(data);
-      setIsOpen(true);
-      setIsCaller(false);
       setRemoteUserId(data.fromUserId);
       setRemoteUsername(data.fromUsername);
+      // Don't auto-open modal - let IncomingCallNotification component handle UI
     };
 
     // SimplePeer signal forward
@@ -304,40 +349,73 @@ export default function VideoCallModal() {
     };
   }, [socket]);
 
+  // Animate dots when waiting for answer
+  useEffect(() => {
+    if (isCaller && !isInCall) {
+      const interval = setInterval(() => {
+        setDots((prev) => {
+          if (prev === ".") return "..";
+          if (prev === "..") return "...";
+          return ".";
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    } else {
+      setDots(".");
+    }
+  }, [isCaller, isInCall]);
+
   // ------------------ RENDER ------------------
 
   return (
     <>
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white w-full max-w-3xl h-[80vh] rounded-lg shadow-lg p-4 flex flex-col">
+          <div className="bg-white w-full max-w-5xl h-[80vh] rounded-lg shadow-lg p-4 flex flex-col">
             {/* HEADER */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold">
                 Video Call {remoteUsername ? `with ${remoteUsername}` : ""}
               </h3>
-              <div className="flex items-center gap-2">
-                {isInCall && (
-                  <button
-                    onClick={hangup}
-                    className="px-3 py-1 bg-red-600 text-white rounded"
-                  >
-                    Hang up
-                  </button>
-                )}
-                <button
-                  onClick={endCall}
-                  className="px-3 py-1 bg-gray-200 rounded"
-                >
-                  Close
-                </button>
-              </div>
             </div>
 
             {/* VIDEOS */}
-            <div className="flex-1 mt-4 grid grid-cols-2 gap-4">
-              {/* Local video */}
-              <div className="bg-black rounded overflow-hidden flex items-center justify-center">
+            <div className="flex-1 relative bg-black rounded overflow-hidden">
+              {/* Remote video (full size) */}
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-cover"
+              />
+
+              {/* Control buttons (bottom right) */}
+              <VideoCallControls
+                isMuted={isMuted}
+                isVideoOff={isVideoOff}
+                onToggleMute={toggleMute}
+                onToggleVideo={toggleVideo}
+                onHangup={hangup}
+              />
+
+              {/* Waiting for answer overlay (caller only) */}
+              {isCaller && !isInCall && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60">
+                  <CallIcon className="text-white text-6xl mb-4 animate-pulse" />
+                  <p className="text-white text-xl font-semibold">
+                    Waiting for answer{dots}
+                  </p>
+                  {remoteUsername && (
+                    <p className="text-white/80 text-sm mt-2">
+                      Calling {remoteUsername}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Local video (picture-in-picture overlay) */}
+              <div className="absolute top-4 right-4 w-48 aspect-[4/3] bg-black rounded-lg overflow-hidden shadow-lg border-1 border-white/20">
                 <video
                   ref={localVideoRef}
                   autoPlay
@@ -346,43 +424,7 @@ export default function VideoCallModal() {
                   className="w-full h-full object-cover"
                 />
               </div>
-
-              {/* Remote video */}
-              <div className="bg-black rounded overflow-hidden flex items-center justify-center">
-                <video
-                  ref={remoteVideoRef}
-                  autoPlay
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-              </div>
             </div>
-
-            {/* Incoming call notification */}
-            {!isInCall && incomingCall && (
-              <div className="mt-3 flex items-center gap-3">
-                <div className="flex-1">
-                  <p className="text-sm">
-                    Incoming call from{" "}
-                    <strong>{incomingCall.fromUsername}</strong>
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={acceptIncoming}
-                    className="px-3 py-2 bg-green-600 text-white rounded"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={declineIncoming}
-                    className="px-3 py-2 bg-red-600 text-white rounded"
-                  >
-                    Decline
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}

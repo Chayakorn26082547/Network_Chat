@@ -317,19 +317,11 @@ export default function VideoCallModal() {
                 Video Call {remoteUsername ? `with ${remoteUsername}` : ""}
               </h3>
               <div className="flex items-center gap-2">
-                {isInCall && (
-                  <button
-                    onClick={hangup}
-                    className="px-3 py-1 bg-red-600 text-white rounded"
-                  >
-                    Hang up
-                  </button>
-                )}
                 <button
-                  onClick={endCall}
-                  className="px-3 py-1 bg-gray-200 rounded"
+                  onClick={hangup}
+                  className="px-3 py-1 bg-red-600 text-white rounded"
                 >
-                  Close
+                  Hang up
                 </button>
               </div>
             </div>

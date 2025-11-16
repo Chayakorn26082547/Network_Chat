@@ -15,6 +15,7 @@ interface PrivateMessage {
   toUsername: string;
   text: string;
   timestamp: number;
+  avatar?: string;
   // --- ADDED ---
   fileData?: string;
   fileName?: string;
@@ -48,6 +49,7 @@ export default function PrivateChatModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null); // --- ADDED ---
   const hasRequestedMessages = useRef(false);
   const chatWithUserIdRef = useRef(chatWithUser.id);
+  const didInitialScroll = useRef(false);
   const currentAvatar =
     (typeof window !== "undefined" && localStorage.getItem("chatAvatar")) ||
     undefined;
@@ -57,9 +59,7 @@ export default function PrivateChatModal({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  // Remove auto-scroll on every message; handled selectively in handlers
 
   useEffect(() => {
     const savedUsername = localStorage.getItem("chatUsername");
@@ -104,6 +104,15 @@ export default function PrivateChatModal({
           }
           return [...prev, msg];
         });
+
+        // Only auto-scroll when YOU sent a text message
+        if (
+          msg.fromUsername === savedUsername &&
+          msg.text &&
+          msg.text.trim().length > 0
+        ) {
+          setTimeout(scrollToBottom, 0);
+        }
       }
     };
 
@@ -122,6 +131,12 @@ export default function PrivateChatModal({
           }
           return data.messages;
         });
+        if (!didInitialScroll.current) {
+          setTimeout(() => {
+            scrollToBottom();
+            didInitialScroll.current = true;
+          }, 0);
+        }
       }
     };
 
@@ -212,14 +227,30 @@ export default function PrivateChatModal({
     >
       <div className="bg-white w-full max-w-2xl h-[80vh] rounded-xl shadow-2xl flex flex-col overflow-hidden relative">
         {/* Header */}
-        <div className="bg-[#252524] p-5 border-b border-blue-200">
-          <h2 className="text-xl font-bold text-[#f8f8f8]">
-            Chat with {chatWithUser.username}
-          </h2>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="w-2 h-2 rounded-full bg-green-400"></span>
-            <span className="text-xs text-gray-300">Online</span>
+        <div className="bg-[#252524] p-5 border-b border-blue-200 relative">
+          <div className="flex items-center gap-3">
+            <img
+              src={
+                chatWithUser.avatar ||
+                `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
+                  chatWithUser.username
+                )}`
+              }
+              alt={`${chatWithUser.username} avatar`}
+              className="w-10 h-10 rounded-full object-cover shadow ring-2 ring-white/10 flex-shrink-0"
+              draggable={false}
+            />
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold text-[#f8f8f8] truncate">
+                Chat with {chatWithUser.username}
+              </h2>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="w-2 h-2 rounded-full bg-green-400"></span>
+                <span className="text-xs text-gray-300">Online</span>
+              </div>
+            </div>
           </div>
+
           <div className="absolute top-4 right-15 flex items-center gap-2">
             <button
               onClick={() => {
@@ -275,6 +306,7 @@ export default function PrivateChatModal({
                     >
                       <img
                         src={
+                          m.avatar ||
                           (isSent ? currentAvatar : chatWithUser.avatar) ||
                           `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
                             isSent

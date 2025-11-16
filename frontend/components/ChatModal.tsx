@@ -5,6 +5,7 @@ import { useSocket } from "@/hooks/useSocket";
 import SendIcon from "@mui/icons-material/Send";
 import AttachFileIcon from "@mui/icons-material/AttachFile"; // --- ADDED ---
 import CloseIcon from "@mui/icons-material/Close"; // --- ADDED ---
+import PublicIcon from "@mui/icons-material/Public";
 
 interface Message {
   id: string;
@@ -12,6 +13,7 @@ interface Message {
   text: string;
   timestamp: number;
   userId?: string;
+  avatar?: string;
   // --- ADDED file fields ---
   fileData?: string; // Base64 data URL
   fileName?: string;
@@ -34,6 +36,7 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null); // --- ADDED ---
   const [userMap, setUserMap] = useState<Record<string, User>>({});
+  const [usersById, setUsersById] = useState<Record<string, User>>({});
   const currentAvatar =
     (typeof window !== "undefined" && localStorage.getItem("chatAvatar")) ||
     undefined;
@@ -42,10 +45,7 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  const didInitialScroll = useRef(false);
 
   useEffect(() => {
     const saved =
@@ -61,8 +61,23 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
 
     if (!socket) return;
 
-    const handleMessage = (m: Message) => setMessages((prev) => [...prev, m]);
-    const handlePreviousMessages = (prev: Message[]) => setMessages(prev);
+    const handleMessage = (m: Message) => {
+      setMessages((prev) => [...prev, m]);
+      // Only auto-scroll when YOU sent a text message
+      if (m.username === saved && m.text && m.text.trim().length > 0) {
+        setTimeout(scrollToBottom, 0);
+      }
+    };
+    const handlePreviousMessages = (prevMessages: Message[]) => {
+      setMessages(prevMessages);
+      // Scroll to bottom once when opening modal/loading history
+      if (!didInitialScroll.current) {
+        setTimeout(() => {
+          scrollToBottom();
+          didInitialScroll.current = true;
+        }, 0);
+      }
+    };
 
     const handleConnect = () => {
       console.log("World chat reconnected, reloading messages...");
@@ -70,9 +85,14 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
     };
 
     const handleUserList = (users: User[]) => {
-      const map: Record<string, User> = {};
-      users.forEach((u) => (map[u.username] = u));
-      setUserMap(map);
+      const byName: Record<string, User> = {};
+      const byId: Record<string, User> = {};
+      users.forEach((u) => {
+        byName[u.username] = u;
+        byId[u.id] = u;
+      });
+      setUserMap(byName);
+      setUsersById(byId);
     };
 
     socket.on("connect", handleConnect);
@@ -82,6 +102,7 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
 
     // Initial load or when connected
     if (connected) {
+      socket.emit("getUserList");
       socket.emit("getPreviousMessages");
     }
 
@@ -160,9 +181,10 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
       <div className="bg-white w-full max-w-2xl h-[80vh] rounded-xl shadow-2xl flex flex-col overflow-hidden relative">
         {/* Header */}
         <div className="h-[8vh] bg-[#252524]  p-5 border-b border-blue-200">
-          <h2 className="ml-5 mt-5 text-xl font-bold text-[#f8f8f8]">
-            World Chat
-          </h2>
+          <div className="flex items-center gap-3 ml-5 mt-5">
+            <PublicIcon className="text-white" />
+            <h2 className="text-xl font-bold text-[#f8f8f8]">World Chat</h2>
+          </div>
         </div>
 
         {/* Messages Container */}
@@ -184,8 +206,12 @@ export default function ChatModal({ onClose }: { onClose: () => void }) {
 
               const isImage = m.fileType?.startsWith("image/");
 
+              const sender = m.userId ? usersById[m.userId] : undefined;
               const avatar =
-                (isSent ? currentAvatar : userMap[m.username]?.avatar) ||
+                m.avatar ||
+                (isSent
+                  ? currentAvatar
+                  : sender?.avatar || userMap[m.username]?.avatar) ||
                 `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
                   m.username
                 )}`;

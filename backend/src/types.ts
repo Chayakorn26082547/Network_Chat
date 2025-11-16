@@ -12,6 +12,7 @@ export interface Message {
   text: string;
   timestamp: number;
   userId: string;
+  avatar?: string;
   fileData?: string; // Base64 data URL
   fileName?: string;
   fileType?: string;
@@ -25,6 +26,7 @@ export interface PrivateMessage {
   toUsername: string;
   text: string;
   timestamp: number;
+  avatar?: string;
   fileData?: string;
   fileName?: string;
   fileType?: string;
@@ -46,6 +48,7 @@ export interface GroupMessage {
   username: string;
   text: string;
   timestamp: number;
+  avatar?: string;
   fileData?: string;
   fileName?: string;
   fileType?: string;
@@ -103,14 +106,32 @@ export interface ClientToServerEvents {
           avatar?: string;
         }
   ) => void;
-  message: (data: { username: string; text: string }) => void;
-  privateMessage: (data: { toUserId: string; text: string }) => void;
+  message: (data: {
+    username: string;
+    text: string;
+    fileData?: string;
+    fileName?: string;
+    fileType?: string;
+  }) => void;
+  privateMessage: (data: {
+    toUserId: string;
+    text: string;
+    fileData?: string;
+    fileName?: string;
+    fileType?: string;
+  }) => void;
   getPreviousPrivateMessages: (chatWithUserId: string) => void;
   createGroup: (groupName: string) => void;
   getGroupList: () => void;
   joinGroup: (groupId: string) => void;
   leaveGroup: (groupId: string) => void;
-  groupMessage: (data: { groupId: string; text: string }) => void;
+  groupMessage: (data: {
+    groupId: string;
+    text: string;
+    fileData?: string;
+    fileName?: string;
+    fileType?: string;
+  }) => void;
   getPreviousGroupMessages: (groupId: string) => void;
   getUserList: () => void;
   getPreviousMessages: () => void;

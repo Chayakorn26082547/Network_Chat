@@ -185,12 +185,16 @@ io.on(
         fileName?: string;
         fileType?: string;
       }) => {
+        const senderUserId = userSockets.get(socket.id) || "unknown";
+        const sender =
+          senderUserId !== "unknown" ? users.get(senderUserId) : undefined;
         const message: Message = {
           id: randomUUID(),
           username: data.username,
           text: data.text,
           timestamp: Date.now(),
-          userId: userSockets.get(socket.id) || "unknown",
+          userId: senderUserId,
+          avatar: sender?.avatar,
 
           // --- ADD THESE ---
           fileData: data.fileData,
@@ -213,12 +217,13 @@ io.on(
 
         // Broadcast to all connected clients
         io.emit("message", message);
-        // Handle get previous messages
-        socket.on("getPreviousMessages", () => {
-          socket.emit("previousMessages", messages);
-        });
       }
     );
+
+    // Handle get previous messages (world chat) - must be at connection scope
+    socket.on("getPreviousMessages", () => {
+      socket.emit("previousMessages", messages);
+    });
 
     // Handle private message sending
     socket.on(
@@ -265,6 +270,7 @@ io.on(
           toUsername: toUser.username,
           text: data.text,
           timestamp: Date.now(),
+          avatar: fromUser.avatar,
 
           // --- ADD THESE ---
           fileData: data.fileData,
@@ -604,6 +610,7 @@ io.on(
           username: user.username,
           text: data.text,
           timestamp: Date.now(),
+          avatar: user.avatar,
 
           // --- ADD THESE ---
           fileData: data.fileData,

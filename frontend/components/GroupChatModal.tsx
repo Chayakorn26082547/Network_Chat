@@ -14,6 +14,7 @@ interface GroupMessage {
   username: string;
   text: string;
   timestamp: number;
+  avatar?: string;
   // --- ADDED ---
   fileData?: string;
   fileName?: string;
@@ -56,7 +57,9 @@ export default function GroupChatModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null); // --- ADDED ---
   const groupIdRef = useRef(group.id);
   const hasRequestedMessages = useRef(false);
+  const didInitialScroll = useRef(false);
   const [userMap, setUserMap] = useState<Record<string, User>>({});
+  const [usersById, setUsersById] = useState<Record<string, User>>({});
   const currentAvatar =
     (typeof window !== "undefined" && localStorage.getItem("chatAvatar")) ||
     undefined;
@@ -69,9 +72,7 @@ export default function GroupChatModal({
     onClose();
   }, [onClose]);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  // Remove auto-scroll on every message; handled selectively in handlers
 
   useEffect(() => {
     const savedUsername = localStorage.getItem("chatUsername");
@@ -97,9 +98,14 @@ export default function GroupChatModal({
           socket.emit("getPreviousGroupMessages", groupIdRef.current);
         }
       }
-      const map: Record<string, User> = {};
-      users.forEach((u) => (map[u.username] = u));
-      setUserMap(map);
+      const byName: Record<string, User> = {};
+      const byId: Record<string, User> = {};
+      users.forEach((u) => {
+        byName[u.username] = u;
+        byId[u.id] = u;
+      });
+      setUserMap(byName);
+      setUsersById(byId);
     };
 
     // Listen for group messages
@@ -112,6 +118,17 @@ export default function GroupChatModal({
           if (prev.some((m) => m.id === msg.id)) return prev;
           return [...prev, msg];
         });
+
+        // Only auto-scroll when YOU sent a text message
+        if (
+          msg.groupId === groupIdRef.current &&
+          currentUserId &&
+          msg.userId === currentUserId &&
+          msg.text &&
+          msg.text.trim().length > 0
+        ) {
+          setTimeout(scrollToBottom, 0);
+        }
       }
     };
 
@@ -122,6 +139,12 @@ export default function GroupChatModal({
     }) => {
       if (data.groupId === groupIdRef.current) {
         setMessages(data.messages);
+        if (!didInitialScroll.current) {
+          setTimeout(() => {
+            scrollToBottom();
+            didInitialScroll.current = true;
+          }, 0);
+        }
       }
     };
 
@@ -344,31 +367,37 @@ export default function GroupChatModal({
                   minute: "2-digit",
                 });
                 const isSystemMessage = m.userId === "system";
-                // --- ADDED ---
                 const isImage = m.fileType && m.fileType.startsWith("image/");
 
+                const sender = m.userId ? usersById[m.userId] : undefined;
                 const avatar =
-                  (isSent ? currentAvatar : userMap[m.username]?.avatar) ||
+                  m.avatar ||
+                  (isSent
+                    ? currentAvatar
+                    : sender?.avatar || userMap[m.username]?.avatar) ||
                   `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(
                     m.username
                   )}`;
+
                 return (
                   <div
                     key={m.id}
-                    className={`flex ${
+                    className={`flex flex-col ${
                       isSystemMessage
-                        ? "justify-center"
+                        ? "items-center"
                         : isSent
-                        ? "justify-end"
-                        : "justify-start"
+                        ? "items-end"
+                        : "items-start"
                     }`}
                   >
+                    {/* SYSTEM MESSAGE */}
                     {isSystemMessage ? (
                       <div className="text-xs text-gray-500 italic bg-gray-100 px-4 py-2 rounded-full">
                         {m.text}
                       </div>
                     ) : (
                       <>
+                        {/* avatar + bubble row */}
                         <div
                           className={`flex items-end gap-2 max-w-full ${
                             isSent ? "flex-row-reverse" : "flex-row"
@@ -379,6 +408,8 @@ export default function GroupChatModal({
                             alt={`${m.username} avatar`}
                             className="w-8 h-8 rounded-full object-cover flex-shrink-0"
                           />
+
+                          {/* MESSAGE BUBBLE */}
                           <div
                             className={`max-w-sm px-5 py-3 rounded-2xl text-sm leading-relaxed ${
                               isSent
@@ -386,13 +417,9 @@ export default function GroupChatModal({
                                 : "bg-gray-200 text-gray-900 rounded-bl-none"
                             }`}
                           >
-                            {/* --- START: UPDATED RENDER LOGIC --- */}
+                            {/* FILE PREVIEW */}
                             {m.fileData && (
-                              <div
-                                className={
-                                  m.text ? "mb-2" : "" // Add margin if text follows
-                                }
-                              >
+                              <div className={m.text ? "mb-2" : ""}>
                                 {isImage ? (
                                   <img
                                     src={m.fileData}
@@ -416,19 +443,20 @@ export default function GroupChatModal({
                                     <span className="text-sm font-medium truncate max-w-xs">
                                       {m.fileName || "Attached File"}
                                     </span>
-                                    {/* You could add a DownloadIcon here */}
                                   </a>
                                 )}
                               </div>
                             )}
-                            {/* Render text if it exists */}
+
+                            {/* TEXT MESSAGE */}
                             {m.text && <div>{m.text}</div>}
-                            {/* --- END: UPDATED RENDER LOGIC --- */}
                           </div>
                         </div>
+
+                        {/* TIMESTAMP BELOW BUBBLE */}
                         <div
-                          className={`text-xs mt-1 opacity-50 text-gray-600 ${
-                            isSent ? "text-right" : "text-left"
+                          className={`text-[10px] opacity-50 mt-1 ${
+                            isSent ? "text-right pr-10" : "text-left pl-10"
                           }`}
                         >
                           {time}
@@ -438,6 +466,7 @@ export default function GroupChatModal({
                   </div>
                 );
               })}
+
               <div ref={messagesEndRef} />
             </>
           )}

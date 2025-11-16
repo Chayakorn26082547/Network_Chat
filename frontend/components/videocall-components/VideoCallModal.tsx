@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useSocket } from "@/hooks/useSocket";
 import SimplePeer from "simple-peer";
 import CallIcon from "@mui/icons-material/Call";
-import VideoCallControls from "@/components/VideoCallControls";
+import VideoCallControls from "@/components/videocall-components/VideoCallControls";
 
 interface IncomingCall {
   fromUserId: string;

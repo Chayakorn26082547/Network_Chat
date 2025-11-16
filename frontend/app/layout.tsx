@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import VideoCallModal from "@/components/VideoCallModal";
-import IncomingCallNotification from "@/components/IncomingCallNotification";
+import VideoCallModal from "@/components/videocall-components/VideoCallModal";
+import IncomingCallNotification from "@/components/videocall-components/IncomingCallNotification";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

@@ -85,6 +85,7 @@ export interface ServerToClientEvents {
   userLeft: (data: { username: string; users: User[] }) => void;
   previousMessages: (messages: Message[]) => void;
   userList: (users: User[]) => void;
+  usernameError: (data: { error: string }) => void;
   // Video call signaling
   incomingVideoCall: (data: {
     fromUserId: string;

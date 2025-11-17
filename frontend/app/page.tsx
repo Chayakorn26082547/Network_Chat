@@ -46,7 +46,24 @@ export default function Home() {
       return () => clearTimeout(timer);
     }
     setIsLoading(false);
-  }, [router]);
+
+    // Listen for username error from server
+    if (socket) {
+      const handleUsernameError = (data: { error: string }) => {
+        setError(data.error);
+        // Clear localStorage if username is rejected
+        localStorage.removeItem("chatUsername");
+        localStorage.removeItem("chatAvatar");
+        setUsername("");
+      };
+
+      socket.on("usernameError", handleUsernameError);
+
+      return () => {
+        socket.off("usernameError", handleUsernameError);
+      };
+    }
+  }, [router, socket]);
 
   const handleSetUsername = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,22 +84,25 @@ export default function Home() {
       return;
     }
 
-    // Save username and avatar to localStorage
+    // Emit username to server via socket (don't save to localStorage yet)
     const trimmedUsername = inputValue.trim();
-    localStorage.setItem("chatUsername", trimmedUsername);
-    localStorage.setItem("chatAvatar", selectedAvatar);
-    setUsername(trimmedUsername);
-
-    // Emit username to server via socket
     if (socket) {
       socket.emit("setUsername", {
         username: trimmedUsername,
         avatar: selectedAvatar,
       });
-    }
 
-    // Redirect to chat page
-    router.push("/chat");
+      // Listen for successful join (one-time listener)
+      socket.once("userJoined", (data) => {
+        if (data.username === trimmedUsername) {
+          // Only save and redirect if server accepted the username
+          localStorage.setItem("chatUsername", trimmedUsername);
+          localStorage.setItem("chatAvatar", selectedAvatar);
+          setUsername(trimmedUsername);
+          router.push("/chat");
+        }
+      });
+    }
   };
 
   if (isLoading) {

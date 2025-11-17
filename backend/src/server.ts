@@ -118,9 +118,8 @@ io.on(
           console.log(
             `Username ${username} already in use by another connection`
           );
-          socket.emit("userJoined", {
-            username: "System",
-            users: Array.from(users.values()),
+          socket.emit("usernameError", {
+            error: "Username already in use. Please choose a different name.",
           });
           return;
         }
